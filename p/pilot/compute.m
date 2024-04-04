@@ -1,6 +1,6 @@
 classdef compute
     methods(Static)
-        function [res, aval] = gss(Cvals, params, searchgrid, prec)            
+        function [res, aval, v] = gss(Cvals, params, searchgrid, prec)            
             ni = max(size(searchgrid));
             r = (3-sqrt(5))/2;
 
@@ -9,16 +9,19 @@ classdef compute
             c = (1-r)*a + r*b;
             d = r*a + (1-r)*b;
 
+            beta = params(2);
+
             vc = compute.linterpolate(Cvals, searchgrid, c);
-            fc = -(aiyagari.uc(c, [params vc]));
+            fc = -(aiyagari.uc(c, params) + beta*vc);
             
             vd = compute.linterpolate(Cvals, searchgrid, d);
-            fd = -(aiyagari.uc(d, [params vd]));
+            fd = -(aiyagari.uc(d, params) + beta*vd);
             iter_ct = 1;
 
 %             disp(fc);
 %             disp(fd);
-%             v = [c fc vc gl.pi(c,params); d fd vd gl.pi(d,params)];
+            v = [c fc vc aiyagari.uc(c, params); 
+                d fd vd aiyagari.uc(d, params)];
 
             while abs(a - b) > prec
                 if fc >= fd
@@ -28,8 +31,8 @@ classdef compute
             
                     fc = fd;
                     vd = compute.linterpolate(Cvals, searchgrid, d);
-                    fd = -(aiyagari.uc(d, [params vd]));
-%                     v = [v; d fd vd gl.pi(d,params)];
+                    fd = -(aiyagari.uc(d, params) + beta*vd);
+                    v = [v; d fd vd aiyagari.uc(d, params)];
                 else
                     b = d;
                     d = c;
@@ -37,14 +40,14 @@ classdef compute
 
                     fd = fc;
                     vc = compute.linterpolate(Cvals, searchgrid, c);
-                    fc = -(aiyagari.uc(c, [params vc]));
-                    %v = [v; c fc vc gl.pi(c,params)];
+                    fc = -(aiyagari.uc(c, params) + beta*vc);
+                    v = [v; c fc vc aiyagari.uc(c,params)];
                 end
 
-                fprintf("Results of iteration %i: [a c d b] = [%4.4f %4.4f %4.4f %4.4f]\n", ...
-                    iter_ct, a, c, d, b);
-
-                disp(fc);
+%                 fprintf("Results of iteration %i: [a c d b] = [%4.4f %4.4f %4.4f %4.4f]\n", ...
+%                     iter_ct, a, c, d, b);
+% 
+%                 disp(fc);
 
                 iter_ct = iter_ct+1;
             end
@@ -52,12 +55,13 @@ classdef compute
 %             disp(fc);
 
             aval = c;
-            res = (aiyagari.uc(c, [params vc]));
+            res = (aiyagari.uc(c, params) + beta*vc);
+            v=sortrows(v);
 
         end
 
         function v = linterpolate(Vvec, searchgrid, vi)
-            ni = size(Vvec,1);
+            ni = max(size(Vvec));
             if vi <= searchgrid(1,1)
 %                 il = 1;
                 v = Vvec(1);
@@ -90,7 +94,6 @@ classdef compute
             
             s = 2.575;
             sigma_x = ((sigma^2)/(1-rho^2))^(0.5); 
-            disp(sigma)
 
             x_1 = mu - s*sigma_x;
             x_Nz = mu + s*sigma_x;

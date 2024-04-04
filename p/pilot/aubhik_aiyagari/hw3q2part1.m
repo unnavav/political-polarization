@@ -52,8 +52,8 @@ precision1 = precision/factordist;
 if (lnum > 1 )
 
     stdinnovl = stdl*sqrt((1.0 - rhol^2)); meanl= 0; multiple = 2.575;
-    [lgrid2, pil2] = tauchen2(meanl, stdinnovl, rhol, multiple, lnum);
-    lgrid2 = exp(lgrid2);
+    [lgrid, pil] = tauchen2(meanl, stdinnovl, rhol, multiple, lnum);
+    lgrid = exp(lgrid);
 
     % aggregate efficiency units of labour
     pilr = ones(1, lnum)*(1/lnum);
@@ -62,19 +62,19 @@ if (lnum > 1 )
     distance = 2.0*precision;
     while (distance > precision/1000.0)
 
-        tpilr = (pilr*pil2);
+        tpilr = (pilr*pil);
         distance = max(abs(tpilr - pilr));
         pilr = tpilr;
     end
 
 else
 
-    lgrid2 = 1;
-    pil2 = 1;
+    lgrid = 1;
+    pil = 1;
     pilr = 1;
 end
 
-lagg = pilr*lgrid2';
+lagg = pilr*lgrid';
 
 aphi = num2str(phi);
 

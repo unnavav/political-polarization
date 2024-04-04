@@ -7,16 +7,18 @@ classdef aiyagari
             r = (alpha)*((K/L)^(alpha-1)) - delta;
         end
 
-        function u = uc(kpr, params)
+        function u = uc(apr, params)
             y = params(1);
             beta = params(2);
             sigma = params(3);
-            ev = params(4);
             
-            if sigma == 1
-                u = log(y-kpr) + beta*ev;
+            cons = y-apr;
+            if cons <= 0
+                u = 2000;
+            elseif sigma == 1
+                u = log(cons);
             else
-                u = (y- kpr) + beta*ev;
+                u = (cons)^(1-sigma)/(1-sigma);
             end
         end
 

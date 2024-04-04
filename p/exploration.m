@@ -13,9 +13,12 @@
 % project
 addpath(genpath(pwd));
 
+% delete(gcp('nocreate'));
+% parpool('local',4);
+
 vTol = 1e-6; gTol = 1e-8;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 2.0; phi = 1; lambda = .07;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 1; lambda = .07;
 
 nl = 7;
 na = 250;
@@ -24,13 +27,16 @@ np = 2;
 
 al = 0; ah = 100;
 
-wage = 2; r = 0.04;
+wage = 1.2482; r = 0.02;
 %% get labor distribution and aggregate value
 %step 1: make labor grid and labor transition matrix
 
 mu = 0;
 rho = .9554;
-sigx = 0.01; % not sure where this comes from??? ask aubhik
+sig_l = 0.5327;
+
+% need to back out sigma^2_e given sigma^2_l
+sigx = sig_l*sqrt(1 - rho^2);
 
 [pil, lgrid] = compute.getTauchen(nl,  mu, sigx, rho);
 
@@ -60,8 +66,6 @@ kh = klwrbnd*khmult;
 %% make asset grid
 
 agrid = compute.logspace(al, ah, na);
-agrid = agrid + ones(na)*(al - 1.0);    %shifting it to the lower bound on 
-                                        % borrowing and solving the new problem
 
 %% make distribution grid
 
@@ -85,12 +89,12 @@ for il = 1:nl
 
             tau = tgrid(ip);
             
-            max_cons = max_cons - lambda*max_cons^(1-tau);
+%             max_cons = gov.tax(max_cons, lambda, tau);
 
             if sigma == 1
                 V(il, ia,ip) = log(max_cons)/(1-beta); 
             else
-                V(il, ia,ip) = (max_cons)^(1-sigma)/((1-beta)*(1-sigma));
+                V(il, ia,ip) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
             end
         end
     end
@@ -105,13 +109,11 @@ EV = zeros(nl, na, np);
 g = zeros(nl, na, np);
 V1 = V;
 g1 = g;
-
+DEV = EV;
 iter_ct = 1;
 
-
-
 while dist > vTol
-    
+   
     % get expected value function 
 
     %TODO ADD PARTY DIFFERENCES
@@ -126,6 +128,10 @@ while dist > vTol
         end
     end
 
+    %DEV approx:
+
+    DEV = egm.numdev(EV, agrid);
+
     % now just make choices for assets
 
     for il = 1:nl
@@ -136,27 +142,57 @@ while dist > vTol
                 tau = tgrid(ip);
 
                 y = wage*l + (1+r)*a - r*phi;
-                y = gov.tax(y, lambda, tau);
+%                 y = gov.tax(y, lambda, tau);
 
                 params = [y beta sigma];
 
-                [vguess, aguess] = compute.gss(EV(il, :, ip), params, ...
+                [vguess, aguess, v] = compute.gss(EV(il, :, ip), params, ...
                     agrid, gTol);
+
+                figure
+                x = v(:,1);
+%                 y = v(:,2);
+%                 plot(x,y)
+%                 hold on
+%                 plot(x, v(:,3))
+%                 hold off
+%                 hold on
+                plot(x, v(:,4))
+%                 hold off
+%                 legend('fd', 'vd', 'aiyagari')
 
                 V(il, ia, ip) = vguess;
                 g(il, ia, ip) = aguess;
-
             end
         end
     end
 
     dist = compute.dist(V1, V, 3);
-    iter_ct = iter_ct + 1;
 
-    if mod(iter_ct, 100) == 0
+    if mod(iter_ct, 10) == 0
         fprintf("Iteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
     end
-    
+
+    iter_ct = iter_ct + 1;
+
     V1 = V;
 
+    tiledlayout(3,1);
+    nexttile
+    mesh(EV(:,:,1))
+    nexttile
+    mesh(V(:,:,1))
+    nexttile
+    mesh(g(:,:,1))
+
 end
+
+tiledlayout(4,1);
+nexttile
+mesh(V(:,:,1))
+nexttile
+mesh(V(:,:,2))
+nexttile
+mesh(g(:,:,1))
+nexttile
+mesh(g(:,:,2))
