@@ -134,35 +134,51 @@ while dist > vTol
 
     % now just make choices for assets
 
+    E = zeros(size(DEV));
+
     for il = 1:nl
         l = lgrid(il);
         for ia = 1:na
-            a = agrid(ia);
+            apr = agrid(ia);
             for ip = 1:np
                 tau = tgrid(ip);
 
-                y = wage*l + (1+r)*a - r*phi;
-%                 y = gov.tax(y, lambda, tau);
+                c = (beta*DEV(il, ia, ip))^(-1/sigma);
+                a = (c + apr - wage*l + r*phi)/(1+r);
 
-                params = [y beta sigma];
+                E(il, ia, ip) = a; 
 
-                [vguess, aguess, v] = compute.gss(EV(il, :, ip), params, ...
-                    agrid, gTol);
+            end
+        end
+    end
 
-                figure
-                x = v(:,1);
-%                 y = v(:,2);
-%                 plot(x,y)
-%                 hold on
-%                 plot(x, v(:,3))
-%                 hold off
-%                 hold on
-                plot(x, v(:,4))
-%                 hold off
-%                 legend('fd', 'vd', 'aiyagari')
+    for il = 1:nl
+        for ia = 1:na
+            for ip = 1:np
+                lb = min(E(il, :, ip));
+                
+                ahat = agrid(ia);
 
-                V(il, ia, ip) = vguess;
-                g(il, ia, ip) = aguess;
+                if ahat < lb
+                    g(il, ia, ip) = 0;
+                else
+                    [ix, we] = compute.weight(E(il, :, ip), ahat);
+                    g(il, ia, ip) = we*E(il, ix, ip) + (1-we)*E(il, ix + 1, ip);
+                end
+
+                c = (1+r)*ahat + wage*lgrid(il) - r*phi - g(il, ia, ip);
+
+                if c < 0
+                    disp([il ia ip])
+                end
+
+                if sigma == 1
+                    V(il, ia, ip) = log(c) + beta*V1(il, ia, ip);
+                else
+                    V(il, ia, ip) = (c^(1-sigma))/(1-sigma) + ...
+                        beta*V1(il, ia, ip);
+                end
+
             end
         end
     end
