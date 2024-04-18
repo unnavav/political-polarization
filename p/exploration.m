@@ -19,7 +19,7 @@ addpath(genpath(pwd));
 
 vTol = 1e-4; gTol = 1e-6;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 1; lambda = .07;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 1; lambda = .01;
 
 nl = 7;
 na = 250;
@@ -69,10 +69,10 @@ amu = linspace(al, ah, nmu);
 
 %% make party policy grid
 
-tgrid = [.7 .3];
+tgrid = [.3 .15];
 
 %% initialize value functions
-V = zeros(nl, na);
+V = zeros(nl, na, np);
 
 for il = 1:nl
     l = lgrid(il);
@@ -81,22 +81,26 @@ for il = 1:nl
 
         max_cons = wage*l + (1+r)*a - r*phi;
             
-        if sigma == 1
-            V(il, ia) = log(max_cons)/(1-beta); 
-        else
-            V(il, ia) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
+        for ip = 1:np
+
+            max_cons = gov.tax(max_cons, lambda, tgrid(ip));
+            
+            if sigma == 1
+                V(il, ia, ip) = log(max_cons)/(1-beta); 
+            else
+                V(il, ia, ip) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
+            end
         end
-        
     end
 end
 
-% p = .5; % initial 50/50 chance of getting any party
+p = .5; % initial 50/50 chance of getting any party
 
 %% solve value function: grid lookup
 
 dist = 10;
-EV = zeros(nl, na);
-g = zeros(nl, na);
+EV = zeros(nl, na, np);
+g = zeros(nl, na, np);
 V1 = V;
 g1 = g;
 iter_ct = 1;
@@ -112,7 +116,9 @@ while dist > vTol
 
     %TODO ADD PARTY DIFFERENCES
     for il = 1:nl
-        EV(il, :) = pil(il,:)*V(:,:);
+        for ip = 1:np
+            EV(il, :, ip) = (p*pil(il,:)*V(:,:,1) + (1-p)*pil(il,:)*V(:,:,2))';
+        end
     end
 
  
@@ -130,22 +136,29 @@ while dist > vTol
 
             C = yvec - agrid;
             C = C(C>0);
+    
+            for ip = 1:np
 
-            if sigma == 1
-                Val = log(C)' + beta*EV(il, 1:size(C,1));
-            else
-                Val = (C.^(1-sigma))/(1-sigma)' + beta*EV(il, 1:size(C,1));
+%                 C = arrayfun(@(x) gov.tax(x,lambda, tgrid(ip)),C);
+
+                C = (1-tgrid(ip))*C;
+
+                if sigma == 1
+                    Val = log(C)' + beta*EV(il, 1:size(C,1),ip);
+                else
+                    Val = (C.^(1-sigma))/(1-sigma)' + beta*EV(il, 1:size(C,1), ip);
+                end
+                
+                [val, ai] = max(Val);
+    
+                V(il, ia, ip) = val;
+                g(il, ia, ip) = agrid(ai);
+
             end
-            
-            [val, ai] = max(Val);
-
-            V(il, ia) = val;
-            g(il, ia) = agrid(ai);
-
         end
     end
 
-    dist = compute.dist(V, V1, 2);
+    dist = compute.dist(V, V1, 3);
 
     if mod(iter_ct, 10) == 0
         fprintf("Iteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
@@ -156,14 +169,17 @@ while dist > vTol
     V1 = V;
     g1 = g;
 
+    tiledlayout(4,1);
+    nexttile
+    mesh(V(:,:,1))
+    nexttile
+    mesh(V(:,:,2))
+    nexttile
+    mesh(g(:,:,1))
+    nexttile
+    mesh(g(:,:,2))
+
 end
 
-tiledlayout(2,1);
-nexttile
-mesh(V)
-% nexttile
-% mesh(V(:,:,2))
-nexttile
-mesh(g)
-% nexttile
-% mesh(g(:,:,2))
+figure
+mesh(g(:,:,1) - g(:,:,2))
