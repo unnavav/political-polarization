@@ -8,15 +8,16 @@
 % is correct
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-%% first set up some grids, pulling a lot from aiyagari
-% project
+restoredefaultpath;
+clear all; clc;
 addpath(genpath(pwd));
 
+% first set up some grids, pulling a lot from aiyagari
+% project
 % delete(gcp('nocreate'));
 % parpool('local',4);
 
-vTol = 1e-6; gTol = 1e-8;
+vTol = 1e-4; gTol = 1e-6;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 1; lambda = .07;
 
@@ -27,7 +28,7 @@ np = 2;
 
 al = 0; ah = 100;
 
-wage = 1.2482; r = 0.02;
+wage = 1.1; r = 0.04;
 %% get labor distribution and aggregate value
 %step 1: make labor grid and labor transition matrix
 
@@ -42,21 +43,16 @@ sigx = sig_l*sqrt(1 - rho^2);
 
 % get steady state labor distribution
 
-ldist = ones(1,nl)/nl;
-
-dist = 10;
-while dist > gTol
-    ldist_1 = ldist*pil;
-    dist = compute.dist(ldist_1, ldist, 1);
-    ldist = ldist_1;
-end
+ldist = asymptotics(dtmc(pil));
 
 lagg = ldist*lgrid';
 
 % get bounds for capital guesses
 rst = 1.0/beta - 1.0;
 
-klwrbnd = (((rst + delta)/(alpha))/(lagg^(1.0 - alpha)))^(1.0 - alpha);
+klwrbnd = (rst + delta)/(alpha);
+klwrbnd = klwrbnd/(lagg^(1-alpha));
+klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 1.025;
 khmult = 1.2;
 
@@ -76,7 +72,7 @@ amu = linspace(al, ah, nmu);
 tgrid = [.7 .3];
 
 %% initialize value functions
-V = zeros(nl, na, np);
+V = zeros(nl, na);
 
 for il = 1:nl
     l = lgrid(il);
@@ -84,48 +80,40 @@ for il = 1:nl
         a = agrid(ia);
 
         max_cons = wage*l + (1+r)*a - r*phi;
-
-        for ip = 1:np
-
-            tau = tgrid(ip);
             
-%             max_cons = gov.tax(max_cons, lambda, tau);
-
-            if sigma == 1
-                V(il, ia,ip) = log(max_cons)/(1-beta); 
-            else
-                V(il, ia,ip) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
-            end
+        if sigma == 1
+            V(il, ia) = log(max_cons)/(1-beta); 
+        else
+            V(il, ia) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
         end
+        
     end
 end
 
-p = .5; % initial 50/50 chance of getting any party
+% p = .5; % initial 50/50 chance of getting any party
 
 %% solve value function: grid lookup
 
 dist = 10;
-EV = zeros(nl, na, np);
-g = zeros(nl, na, np);
+EV = zeros(nl, na);
+g = zeros(nl, na);
 V1 = V;
 g1 = g;
 DEV = EV;
 iter_ct = 1;
+
+% start initial r guess at a different 
+kval = kl;
+r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
+wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
 
 while dist > vTol
    
     % get expected value function 
 
     %TODO ADD PARTY DIFFERENCES
-    for ia = 1:na
-        for il = 1:nl
-            for ip = 1:np
-                pl = pil(il,:);
-                val = p*V(:,  ia, 1) + (1-p)*V(:, ia, 2);
-
-                EV(il, ia, ip) = pl*val;
-            end
-        end
+    for il = 1:nl
+        EV(il, :) = pil(il,:)*V(:,:);
     end
 
     %DEV approx:
@@ -140,50 +128,55 @@ while dist > vTol
         l = lgrid(il);
         for ia = 1:na
             apr = agrid(ia);
-            for ip = 1:np
-                tau = tgrid(ip);
 
-                c = (beta*DEV(il, ia, ip))^(-1/sigma);
-                a = (c + apr - wage*l + r*phi)/(1+r);
-
-                E(il, ia, ip) = a; 
-
-            end
+            c = (beta*DEV(il, ia))^(-1/sigma);
+            a = (c + apr - (wage*l - r*phi))/(1+r);
+    
+            E(il, ia) = a; 
         end
     end
+
+    tiledlayout(3,1);
+    nexttile
+    mesh(V)
+    nexttile
+    mesh(DEV)
+    nexttile
+    mesh(E)
 
     for il = 1:nl
+        achoices = E(il,:)';
+
         for ia = 1:na
-            for ip = 1:np
-                lb = min(E(il, :, ip));
-                
-                ahat = agrid(ia);
 
-                if ahat < lb
-                    g(il, ia, ip) = 0;
-                else
-                    [ix, we] = compute.weight(E(il, :, ip), ahat);
-                    g(il, ia, ip) = we*E(il, ix, ip) + (1-we)*E(il, ix + 1, ip);
-                end
+            lb = achoices(1);
+            
+            ahat = agrid(ia);
 
-                c = (1+r)*ahat + wage*lgrid(il) - r*phi - g(il, ia, ip);
-
-                if c < 0
-                    disp([il ia ip])
-                end
-
-                if sigma == 1
-                    V(il, ia, ip) = log(c) + beta*V1(il, ia, ip);
-                else
-                    V(il, ia, ip) = (c^(1-sigma))/(1-sigma) + ...
-                        beta*V1(il, ia, ip);
-                end
-
+            if ahat < lb
+                g(il, ia) = 0;
+            else
+                [ix, we] = compute.weight(achoices, ahat);
+                g(il, ia) = we*agrid(ix) + (1-we)*agrid(ix + 1);
             end
+
+            c = (1+r)*ahat + wage*lgrid(il) - r*phi - g(il, ia);
+
+            if c < 0
+                disp([il ia])
+            end
+
+            if sigma == 1
+                V(il, ia) = log(c) + beta*V1(il, ia);
+            else
+                V(il, ia) = (c^(1-sigma))/(1-sigma) + ...
+                    beta*V1(il, ia);
+            end 
+
         end
     end
 
-    dist = compute.dist(V1, V, 3);
+    dist = compute.dist(V1, V,2);
 
     if mod(iter_ct, 10) == 0
         fprintf("Iteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
@@ -195,20 +188,20 @@ while dist > vTol
 
     tiledlayout(3,1);
     nexttile
-    mesh(EV(:,:,1))
+    mesh(V)
     nexttile
-    mesh(V(:,:,1))
+    mesh(E)
     nexttile
-    mesh(g(:,:,1))
+    mesh(g)
 
 end
 
 tiledlayout(4,1);
 nexttile
-mesh(V(:,:,1))
+mesh(V)
+% nexttile
+% mesh(V(:,:,2))
 nexttile
-mesh(V(:,:,2))
-nexttile
-mesh(g(:,:,1))
-nexttile
-mesh(g(:,:,2))
+mesh(g)
+% nexttile
+% mesh(g(:,:,2))
