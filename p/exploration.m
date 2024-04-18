@@ -99,7 +99,6 @@ EV = zeros(nl, na);
 g = zeros(nl, na);
 V1 = V;
 g1 = g;
-DEV = EV;
 iter_ct = 1;
 
 % start initial r guess at a different 
@@ -116,67 +115,37 @@ while dist > vTol
         EV(il, :) = pil(il,:)*V(:,:);
     end
 
-    %DEV approx:
-
-    DEV = egm.numdev(EV, agrid);
-
-    % now just make choices for assets
-
-    E = zeros(size(DEV));
+ 
+    %g choice: maximize expected value
 
     for il = 1:nl
         l = lgrid(il);
         for ia = 1:na
-            apr = agrid(ia);
 
-            c = (beta*DEV(il, ia))^(-1/sigma);
-            a = (c + apr - (wage*l - r*phi))/(1+r);
-    
-            E(il, ia) = a; 
-        end
-    end
+            a = agrid(ia);
 
-    tiledlayout(3,1);
-    nexttile
-    mesh(V)
-    nexttile
-    mesh(DEV)
-    nexttile
-    mesh(E)
+            y = (1+r)*a + wage*l - r*phi;
 
-    for il = 1:nl
-        achoices = E(il,:)';
+            yvec = ones(250,1)*y;
 
-        for ia = 1:na
-
-            lb = achoices(1);
-            
-            ahat = agrid(ia);
-
-            if ahat < lb
-                g(il, ia) = 0;
-            else
-                [ix, we] = compute.weight(achoices, ahat);
-                g(il, ia) = we*agrid(ix) + (1-we)*agrid(ix + 1);
-            end
-
-            c = (1+r)*ahat + wage*lgrid(il) - r*phi - g(il, ia);
-
-            if c < 0
-                disp([il ia])
-            end
+            C = yvec - agrid;
+            C = C(C>0);
 
             if sigma == 1
-                V(il, ia) = log(c) + beta*V1(il, ia);
+                Val = log(C)' + beta*EV(il, 1:size(C,1));
             else
-                V(il, ia) = (c^(1-sigma))/(1-sigma) + ...
-                    beta*V1(il, ia);
-            end 
+                Val = (C.^(1-sigma))/(1-sigma)' + beta*EV(il, 1:size(C,1));
+            end
+            
+            [val, ai] = max(Val);
+
+            V(il, ia) = val;
+            g(il, ia) = agrid(ai);
 
         end
     end
 
-    dist = compute.dist(V1, V,2);
+    dist = compute.dist(V, V1, 2);
 
     if mod(iter_ct, 10) == 0
         fprintf("Iteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
@@ -185,18 +154,11 @@ while dist > vTol
     iter_ct = iter_ct + 1;
 
     V1 = V;
-
-    tiledlayout(3,1);
-    nexttile
-    mesh(V)
-    nexttile
-    mesh(E)
-    nexttile
-    mesh(g)
+    g1 = g;
 
 end
 
-tiledlayout(4,1);
+tiledlayout(2,1);
 nexttile
 mesh(V)
 % nexttile
