@@ -130,15 +130,15 @@ while kDist > kTol
     kdist = abs(kagg - kval);
 end
 
-tiledlayout(4,1);
+tiledlayout(3,1);
 nexttile
 mesh(V(:,:,1,1))
 nexttile
 mesh(V(:,:,2,1))
 nexttile
 mesh(VOTES(:,:,2))
-nexttile
-mesh(EV(:,:,1,1) - EV(:,:,1,2))
+% nexttile
+% mesh(EV(:,:,1,1) - EV(:,:,1,2))
 
 
 %% (B) getting perfect foresight impulse responses

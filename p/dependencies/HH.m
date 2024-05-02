@@ -76,16 +76,19 @@ classdef HH
             
                         C = yvec - agrid';
                         C = C(C>0);
+                        C2 = C;
                 
                         for ip = 1:np
             
                             nchoices = max(size(C));
                             for ic = 1:nchoices
-                                C(ic) = gov.tax(agrid(ic),lamgrid(ip), tgrid(ip));
+                                C2(ic) = gov.tax(C(ic),lamgrid(ip), tgrid(ip));
                             end
             
                             %C = (1-tgrid(ip))*C;
             
+                            C = C2;
+
                             if sigma == 1
                                 Val = log(C)' + beta*EV(il, 1:size(C,1),ip);
                             else
