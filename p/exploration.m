@@ -17,11 +17,9 @@ addpath(genpath(pwd));
 % delete(gcp('nocreate'));
 % parpool('local',4);
 
-vTol = 1e-4; gTol = 1e-6;
+vTol = 1e-4; gTol = 1e-6; kTol = 1e-4;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 2;
-
-identity = 0.01;
 
 nl = 7;
 na = 250;
@@ -31,7 +29,10 @@ np = 2;
 al = 1; ah = 101;
 
 wage = 1.1; r = 0.04;
-%% get labor distribution and aggregate value
+
+%political params
+identity = 0.01; pctDem = .5;
+% get labor distribution and aggregate values
 %step 1: make labor grid and labor transition matrix
 
 mu = 0;
@@ -56,152 +57,77 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 1.025;
-khmult = 1.2;
+khmult = 20;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
 
-%% make asset grid
+% make asset grid
 
-agrid = compute.logspace(al, ah, na);
+agrid = linspace(al, ah, na);
 
-%% make distribution grid
+% make distribution grid
 
 amu = linspace(al, ah, nmu);
 
-%% make party policy grid
+% make party policy grid
 
 tgrid = [.1 .5];
 lamgrid = [.07 .21];
-%% initialize value functions
-V = zeros(nl, na, np, np); %(labor, assets, my type, goverment type)
-
-for il = 1:nl
-    l = lgrid(il);
-    for ia = 1:na
-        a = agrid(ia);
-
-        max_cons = wage*l + (1+r)*a - r*phi;
-            
-        for ip = 1:np
-
-            max_cons = gov.tax(max_cons, lamgrid(ip), tgrid(ip));
-            
-            if sigma == 1
-                V(il, ia, ip, ip) = log(max_cons)/(1-beta); 
-            else
-                V(il, ia, ip, ip) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
-            end
-        end
-    end
-end
 
 p = .5; % initial 50/50 chance of getting any party
 
-%% solve value function: grid lookup
+%% solving for wages and r by getting aggregate capital
 
-dist = 10;
-EV = zeros(nl, na, np, np);
-g = zeros(nl, na, np, np);
-V1 = V;
-g1 = g;
-iter_ct = 1;
+kDist = 10;
+while kDist > kTol
 
-VOTES = zeros(nl, na, np);
+    kval = .5*(kl + kh);
 
-% start initial r guess at a different 
-kval = kl;
-r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
-wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
+    fprintf("A guess: %4.4f. Begin iteration for solution...\n", kval)
+    fprintf("\t Solving value function:\n")
 
-% get expected value function to start with
+    r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
+    wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
 
-%TODO ADD PARTY DIFFERENCES
-for il = 1:nl
-    for ip = 1:np
-        EV(il, :, 1, ip) = (p*pil(il,:)*V(:,:,1,1) + ...
-            (1-p)*pil(il,:)*V(:,:,1,2))';
-        EV(il, :, 2, ip) = (p*pil(il,:)*V(:,:,2,1) + ...
-            (1-p)*pil(il,:)*V(:,:,2,2))';
-    end
-end
+    %reassign whole thing just bc i'm debugging and idk what's wrong
+    terms = struct('beta', beta, ...
+        'sigma', sigma, ...
+        'phi', phi, ...
+        'identity', identity, ...
+        'r', r, ...
+        'wage', wage, ...
+        'agrid', agrid, ...
+        'lgrid', lgrid, ...
+        'tgrid', tgrid, ...
+        'lamgrid', lamgrid, ...
+        'pil', pil, ...
+        'p', p);
 
-while dist > vTol
+    [V, g, VOTES] = HH.solve(nl, na, np, terms, vTol);
 
- 
-    %g choice: maximize expected value
+    fprintf("\t Solving asset distribution:\n")
+    [adistr, kagg] = HH.getDist(g, amu, agrid, pil, pctDem);
 
-    for il = 1:nl
-        l = lgrid(il);
-        for ia = 1:na
+    f = kagg - kval;
 
-            a = agrid(ia);
+    flatdistr=squeeze(sum(adistr,2));
 
-            y = (1+r)*a + wage*l - r*phi;
-
-            yvec = ones(250,1)*y;
-
-            C = yvec - agrid;
-            C = C(C>0);
-    
-            for ip = 1:np
-
-                nchoices = max(size(C));
-                for ic = 1:nchoices
-                    C(ic) = gov.tax(agrid(ic),lamgrid(ip), tgrid(ip));
-                end
-
-                %C = (1-tgrid(ip))*C;
-
-                if sigma == 1
-                    Val = log(C)' + beta*EV(il, 1:size(C,1),ip);
-                else
-                    Val = (C.^(1-sigma))/(1-sigma)' + beta*EV(il, 1:size(C,1), ip);
-                end
-                
-                [val, ai] = max(Val);
-    
-                if ip - 1 > 0
-                    V(il, ia, 1, ip) = val;
-                    g(il, ia, 1, ip) = agrid(ai);
-                    V(il, ia, 2, ip) = val + identity;
-                    g(il, ia, 2, ip) = agrid(ai);
-                else 
-                    V(il, ia, 1, ip) = val + identity;
-                    g(il, ia, 1, ip) = agrid(ai);
-                    V(il, ia, 2, ip) = val;
-                    g(il, ia, 2, ip) = agrid(ai);
-                end
-            end
-        end
+    if f > 0
+        fprintf("Aggregate capital is too low.\n\n")
+        pause(1)
+        figure
+        mesh(flatdistr) 
+        kl = .5*(kval+kl);
+    else
+        fprintf("Aggregate capital is too high.\n\n")
+        pause(1)
+        figure
+        mesh(flatdistr) 
+        kh = .5*(kval+kh);
     end
 
-    % get expected value function after getting value function
-
-    %TODO ADD PARTY DIFFERENCES
-    for il = 1:nl
-        for ip = 1:np
-            EV(il, :, 1, ip) = pil(il,:)*V(:,:,1,ip);
-            EV(il, :, 2, ip) = pil(il,:)*V(:,:,2,ip);
-        end
-    end
-
-    % calculate voting decision
-
-    VOTES(:,:,1) = EV(:,:,1,1) >= EV(:,:,1,2);
-    VOTES(:,:,2) = EV(:,:,2,1) >= EV(:,:,2,2);
-
-    dist = compute.dist(V, V1, 4);
-
-    if mod(iter_ct, 10) == 0
-        fprintf("Iteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
-    end
-
-    iter_ct = iter_ct + 1;
-
-    V1 = V;
-    g1 = g;
-
+    kdist = abs(kagg - kval);
 end
 
 tiledlayout(4,1);
@@ -213,3 +139,51 @@ nexttile
 mesh(VOTES(:,:,2))
 nexttile
 mesh(EV(:,:,1,1) - EV(:,:,1,2))
+
+
+%% (B) getting perfect foresight impulse responses
+
+T = 150;
+f = @(rho, t, e0) rho^t*e0;
+rho = .9;
+e0 = 0.01;
+k0 = 1;
+lambda = .9;
+
+At = ones(T,1);
+for t = 1:T
+    At(t) = f(rho, t, e0);
+end
+
+At = exp(At);
+At = [ones(10,1); At];
+At = At';
+At = At(1:T);
+
+params = [alpha beta delta sigma lagg];
+
+[At, yt, ct, kt] = predict.perfectForesight(At,kagg,k0,lambda,params,vTol);
+
+col1 = [.159 .072 .130]*(1/(.255));
+col2 = [.255 .217 .120]*(1/(.255));
+col3 = [.110 .182 .095]*(1/(.255));
+col4 = [.086 .145 .128]*(1/(.255));
+
+%plotting
+tiledlayout(2,2)
+nexttile
+plot(At, 'Color', col1)
+title("TFP")
+nexttile
+plot(yt, 'Color', col2)
+title("Output")
+nexttile
+plot(kt, 'Color', col3)
+title("Capital")
+nexttile
+plot(ct, 'Color', col4)
+title("Consumption")
+
+exportgraphics(gcf, "../v/Q2b_charts.png", 'Resolution', 500)
+
+% need to figure out impulse responses 
