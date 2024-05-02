@@ -17,14 +17,13 @@ addpath(genpath(pwd));
 % delete(gcp('nocreate'));
 % parpool('local',4);
 
-vTol = 1e-4; gTol = 1e-6; kTol = 1e-4;
+vTol = 1e-4; gTol = 1e-6; kTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 2;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 1;
 
 nl = 7;
 na = 250;
 nmu = 2500;
-np = 2;
 
 al = 1; ah = 101;
 
@@ -57,7 +56,7 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 1.025;
-khmult = 20;
+khmult = 1.2;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -70,16 +69,10 @@ agrid = linspace(al, ah, na);
 
 amu = linspace(al, ah, nmu);
 
-% make party policy grid
-
-tgrid = [.1 .5];
-lamgrid = [.07 .21];
-
-p = .5; % initial 50/50 chance of getting any party
-
 %% solving for wages and r by getting aggregate capital
 
 kDist = 10;
+
 while kDist > kTol
 
     kval = .5*(kl + kh);
@@ -94,49 +87,43 @@ while kDist > kTol
     terms = struct('beta', beta, ...
         'sigma', sigma, ...
         'phi', phi, ...
-        'identity', identity, ...
         'r', r, ...
         'wage', wage, ...
         'agrid', agrid, ...
         'lgrid', lgrid, ...
-        'tgrid', tgrid, ...
-        'lamgrid', lamgrid, ...
-        'pil', pil, ...
-        'p', p);
+        'pil', pil);
 
-    [V, g, VOTES] = HH.solve(nl, na, np, terms, vTol);
+    [V, g] = HH.solve(nl, na, terms, vTol);
 
-    fprintf("\t Solving asset distribution:\n")
-    [adistr, kagg] = HH.getDist(g, amu, agrid, pil, pctDem);
+    fprintf("\tSolving asset distribution:\n")
+    [adistr, kagg] = HH.getDist(g, amu, agrid, pil);
 
     f = kagg - kval;
 
-    flatdistr=squeeze(sum(adistr,2));
-
     if f > 0
-        fprintf("Aggregate capital is too low.\n\n")
+        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.\n\n", abs(f))
         pause(1)
         figure
-        mesh(flatdistr) 
+        mesh(adistr) 
         kl = .5*(kval+kl);
     else
-        fprintf("Aggregate capital is too high.\n\n")
+        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.\n\n", abs(f))
         pause(1)
         figure
-        mesh(flatdistr) 
+        mesh(adistr) 
         kh = .5*(kval+kh);
     end
 
-    kdist = abs(kagg - kval);
+    kdist = abs(f);
 end
 
 tiledlayout(3,1);
 nexttile
-mesh(V(:,:,1,1))
+mesh(V)
 nexttile
-mesh(V(:,:,2,1))
+mesh(EV)
 nexttile
-mesh(VOTES(:,:,2))
+mesh(g)
 % nexttile
 % mesh(EV(:,:,1,1) - EV(:,:,1,2))
 
