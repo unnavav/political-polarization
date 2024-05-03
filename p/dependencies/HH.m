@@ -12,6 +12,7 @@ classdef HH
             lgrid = terms.lgrid;
             agrid = terms.agrid;
             pil = terms.pil;
+            T = terms.T;
 
             V = zeros(nl, na);
             EV = V;
@@ -20,15 +21,16 @@ classdef HH
 
             % initialize value functions
             V = zeros(nl, na); %(labor, assets, my type, goverment type)
-            
+
             for il = 1:nl
                 l = lgrid(il);
                 for ia = 1:na
                     a = agrid(ia);
             
                     max_cons = wage*l + (1+r)*a - r*phi;
-                        
-                                    
+                       
+                    max_cons = max_cons - T(il, ia);
+                         
                     if sigma == 1
                         V(il, ia) = log(max_cons)/(1-beta); 
                     else
@@ -51,18 +53,16 @@ classdef HH
                 %g choice: maximize expected value
             
                 for il = 1:nl
-                    l = lgrid(il);
-                    for ia = 1:na
-            
+                    for ia = 1:na            
                         a = agrid(ia);
             
-                        y = (1+r)*a + wage*l - r*phi;
-            
-                        yvec = ones(na,1)*y;
-            
-                        C = yvec - agrid';
-                        C = C(C>0);                
-            
+                        ytax = abs(T(il, ia)); %taxed income or transfer
+                        ytax = ytax + a - r*phi; %adding assets and shift
+                        yvec = ones(na,1)*ytax;  %make vector of income
+                        yvec = abs(yvec);   % turn tax into transfer for neg.
+                        C = yvec - agrid';  % vector of leftover income
+                        C = C(C>0);         % vector of feas. consumption
+
                         if sigma == 1
                             Val = log(C)' + beta*EV(il, 1:size(C,1));
                         else
@@ -161,7 +161,7 @@ classdef HH
             
                 mu = mu1;   
             end
-            s = sprintf( '\n\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
+            s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
                 iter_ct, distance, sum(sum(mu)));
             disp(s);
 

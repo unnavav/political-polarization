@@ -1,11 +1,25 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% setting up original household problem and solving it
 % vaasavi
-% march 2024
+% may 2024
 % 
-% solving via grid search,because there's noise and 
-% ergo i donut trust splines (not sure if this instinct)
-% is correct
+% aiyagari + progressive tax policy
+%
+% The progressive tax policy is given and calibrated by
+% Heathcote et al. 2017. I use the values of 
+% progressivity already calibrated from the US tax
+% schedule
+% 
+% The code is structured as follows: 
+% 1. Make guess of interest rate and lambda
+% 2. Back out aggregate capital and government
+% 3. If not correct, adjust.
+%
+% In particular, the choice of lambda comes from 
+% determining whether Y - C - I = G = 0 in equilibrium.
+% I add up tax revenue with a given lambda and then 
+% determine if the lambda is the correct value. If
+% revenue is too high, lower lambda, and vice versa.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 restoredefaultpath;
@@ -17,7 +31,7 @@ addpath(genpath(pwd));
 % delete(gcp('nocreate'));
 % parpool('local',4);
 
-vTol = 1e-4; gTol = 1e-6; kTol = 1e-3;
+vTol = 1e-6; gTol = 1e-8; dTol = 1e-3;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 1;
 
@@ -69,11 +83,22 @@ agrid = linspace(al, ah, na);
 
 amu = linspace(al, ah, nmu);
 
+% initial tau guess
+tau = 0.181; %heathcote et al 2017
+
+% lambda upper lower bounds
+ll = 0; lh = 1;
+lamval = .8; %based on some guess from a 3D plot I made; this gives transfers
+adj = .7;
+
 %% solving for wages and r by getting aggregate capital
 
 kDist = 10;
+tDist = 10;
 
-while kDist > kTol
+DIST = max(kDist,tDist);
+
+while DIST > dTol
 
     kval = .5*(kl + kh);
 
@@ -83,7 +108,19 @@ while kDist > kTol
     r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
     wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
 
-    %reassign whole thing just bc i'm debugging and idk what's wrong
+    % making tax schedule
+    
+    wage_inc = repmat(wage*lgrid,na,1)';
+    cap_inc = repmat(r*(agrid-1),nl,1);
+    Y = wage_inc+cap_inc;
+    T = gov.tax(Y,lamval,tau);
+
+    wage_inc_mu = repmat(wage*lgrid, nmu,1)';
+    cap_inc_mu = repmat(r*amu, nl, 1);
+    Ymu = wage_inc_mu + cap_inc_mu;
+    Tmu = gov.tax(Ymu, lamval, tau);
+
+    %prepare for VFI
     terms = struct('beta', beta, ...
         'sigma', sigma, ...
         'phi', phi, ...
@@ -91,30 +128,44 @@ while kDist > kTol
         'wage', wage, ...
         'agrid', agrid, ...
         'lgrid', lgrid, ...
-        'pil', pil);
+        'pil', pil, ...
+        'T', T);
 
     [V, g] = HH.solve(nl, na, terms, vTol);
 
+    % asset distr
     fprintf("\tSolving asset distribution:\n")
     [adistr, kagg] = HH.getDist(g, amu, agrid, pil);
 
     f = kagg - kval;
 
     if f > 0
-        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.\n\n", abs(f))
-        pause(1)
-        figure
-        mesh(adistr) 
+        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
         kl = .5*(kval+kl);
     else
-        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.\n\n", abs(f))
-        pause(1)
-        figure
-        mesh(adistr) 
+        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.", abs(f))
         kh = .5*(kval+kh);
     end
 
-    kdist = abs(f);
+    kDist = abs(f);
+    
+    t = adistr.*Tmu; %getting all taxes collected
+    t = sum(sum(t));
+
+    if t>0
+       fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
+           "\tTax rate is too high.\n\n", t, lamval)
+       lh = (lamval*adj+(1-adj)*lh)/2;
+    else
+       fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
+           "\tTax rate is too low.\n\n", t, lamval);
+       ll = (lamval*adj+(1-adj)*ll)/2;
+    end
+
+    tDist = abs(t);
+    lamval = .5*(ll + lh);
+
+    DIST = max(kDist, tDist);
 end
 
 tiledlayout(3,1);
