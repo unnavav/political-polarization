@@ -81,9 +81,9 @@ classdef HH
             
                 dist = compute.dist(V, V1, 2);
             
-                if mod(iter_ct, 100) == 0
-                    fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
-                end
+%                 if mod(iter_ct, 100) == 0
+%                     fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
+%                 end
             
                 iter_ct = iter_ct + 1;
             
@@ -126,7 +126,7 @@ classdef HH
                 end
             end
 
-            while (distance > 1e-8)
+            while (distance > 1e-8 && iter_ct < 3000)
                 
                 mu1 = zeros(size(mu));
                 
@@ -151,11 +151,11 @@ classdef HH
                                 
                 distance = compute.dist(mu1, mu, 2);
                 
-                if (mod(iter_ct,25) == 0)
-                    s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-                        iter_ct, distance, sum(sum(mu1)));
-                    disp(s);
-                end
+%                 if (mod(iter_ct,200) == 0)
+%                     s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
+%                         iter_ct, distance, sum(sum(mu1)));
+%                     disp(s);
+%                 end
                 
                 iter_ct = iter_ct + 1;
             
