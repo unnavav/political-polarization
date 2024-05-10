@@ -5,21 +5,9 @@
 % 
 % aiyagari + progressive tax policy
 %
-% The progressive tax policy is given and calibrated by
-% Heathcote et al. 2017. I use the values of 
-% progressivity already calibrated from the US tax
-% schedule
-% 
-% The code is structured as follows: 
-% 1. Make guess of interest rate and lambda
-% 2. Back out aggregate capital and government
-% 3. If not correct, adjust.
-%
-% In particular, the choice of lambda comes from 
-% determining whether Y - C - I = G = 0 in equilibrium.
-% I add up tax revenue with a given lambda and then 
-% determine if the lambda is the correct value. If
-% revenue is too high, lower lambda, and vice versa.
+% Gonna use endogenous grid method to figure out the 
+% HH problem . then from there, try to converge on a 
+% lambda - r pair solution. 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 restoredefaultpath;
@@ -144,12 +132,6 @@ while DIST > dTol
         fprintf("\tSolving asset distribution:\n")
         [adistr, kagg] = HH.getDist(g, amu, agrid, pil);
  
-%         % CHECK:
-%         % before the tax schedule is right, this is not going to converge to
-%         % the correct equilibrium. So what I do instead is to see the
-%         % amount the capital value has changed, and when it's no longer
-%         % changing, exit the loop and update the tax schedule. 
-%         pct_chg_diff = (kagg-kval)/f;
         f = kagg - kval;
     
         if f > 0

@@ -50,13 +50,15 @@ classdef HH
                     EV(il, :) = pil(il,:)*V(:,:);
                 end
 
-                %g choice: maximize expected value
+                DEV = egm.numdev(EV,agrid);
+
+                %now find endogenous grid
             
                 for il = 1:nl
-                    for ia = 1:na            
-                        a = agrid(ia);
-            
+                    for apr = 1:na            
                         ytax = abs(T(il, ia)); %taxed income or transfer
+                        c = (beta*DEV(il, ia))^(-1/sigma);
+                        a = (c + apr - wage*l + r*phi)/(1+r);      %%%% TODO FIGURE OUT THIS EQN        
                         ytax = ytax + a - r*phi; %adding assets and shift
                         yvec = ones(na,1)*ytax;  %make vector of income
                         yvec = abs(yvec);   % turn tax into transfer for neg.
