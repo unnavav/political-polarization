@@ -16,8 +16,8 @@ addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
 % project
-% delete(gcp('nocreate'));
-% parpool('local',4);
+delete(gcp('nocreate'));
+parpool('local',4);
 
 vTol = 1e-6; gTol = 1e-8; dTol = 1e-3;
 %% params

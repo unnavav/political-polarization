@@ -12,12 +12,14 @@ classdef HH
             lgrid = terms.lgrid;
             agrid = terms.agrid;
             pil = terms.pil;
-            T = terms.T;
+            lambda = terms.lambda;
+            tau = terms.tau;
 
             V = zeros(nl, na);
             EV = V;
             g = V;
             V1 = V;
+            E = EV;
 
             % initialize value functions
             V = zeros(nl, na); %(labor, assets, my type, goverment type)
@@ -42,6 +44,7 @@ classdef HH
 
             dist = 10;
             iter_ct = 1;
+            options = optimoptions('fsolve','Display','none');
             
             while dist > vTol
             
@@ -54,47 +57,73 @@ classdef HH
 
                 %now find endogenous grid
             
-                for il = 1:nl
+                parfor il = 1:nl
+                    w_e = wage*lgrid(il);
                     for apr = 1:na            
-                        ytax = abs(T(il, ia)); %taxed income or transfer
-                        c = (beta*DEV(il, ia))^(-1/sigma);
-                        a = (c + apr - wage*l + r*phi)/(1+r);      %%%% TODO FIGURE OUT THIS EQN        
-                        ytax = ytax + a - r*phi; %adding assets and shift
-                        yvec = ones(na,1)*ytax;  %make vector of income
-                        yvec = abs(yvec);   % turn tax into transfer for neg.
-                        C = yvec - agrid';  % vector of leftover income
-                        C = C(C>0);         % vector of feas. consumption
-
-                        if sigma == 1
-                            Val = log(C)' + beta*EV(il, 1:size(C,1));
-                        else
-                            Val = (C.^(1-sigma))/(1-sigma)' + beta*EV(il, 1:size(C,1));
-                        end
+                        a_pr = agrid(apr);
+                        c = (beta*DEV(il, apr))^(-1/sigma);
+                        capr = c+w_e;
                         
-                        [val, ai] = max(Val);
-
-                        V(il, ia) = val;
-                        g(il, ia) = agrid(ai);
+                        bcterms = struct('we', w_e, ...
+                            'capr', capr, ...
+                            'r', r, ...
+                            'tau', tau);
+                        budgetfun = @(x)egm.impliedbc(x, bcterms);
+                        E(il, ia)  = fsolve(budgetfun, a_pr, options);      %%%% see if this slows it down        
+                        
 
                     end
                 end
-            
-                % get expected value function after getting value function
-            
-                dist = compute.dist(V, V1, 2);
-            
+                
+                % now project it back onto agrid
+    
+                for il = 1:nl
+                    w_e = wage*lgrid(il);
+                    
+                    for ia = 1:na
+                        lb = min(E(il, :));
+                        
+                        ahat = agrid(ia);
+                        
+                        if ahat < lb
+                            g(il, ia) = 0;
+                        else
+                            [ix, we] = compute.weight(E(il, :), ahat);
+                            g(il, ia) = we*E(il, ix) + (1-we)*E(il, ix + 1);
+                        end
+                        
+                        c = gov.tax((1+r)*ahat + w_e, lambda, tau) ...
+                            - r*phi - g(il, ia);
+                        
+                        if c < 0
+                            disp([il ia])
+                        end
+                        
+                        if sigma == 1
+                            V(il, ia) = log(c) + beta*V1(il, ia);
+                        else
+                            V(il, ia) = (c^(1-sigma))/(1-sigma) + ...
+                                beta*V1(il, ia);
+                        end
+                        
+                    end
+                end
+            end
+
+            dist = compute.dist(V, V1, 2);
+        
 %                 if mod(iter_ct, 100) == 0
 %                     fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
 %                 end
-            
-                iter_ct = iter_ct + 1;
-            
-                V1 = V;            
-            end
-
-            fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
-
+        
+            iter_ct = iter_ct + 1;
+        
+            V1 = V;            
         end
+
+        fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
+
+    end
 
         function [mu1, Kagg] = getDist(g, amu, agrid, pil)
 

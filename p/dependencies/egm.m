@@ -47,5 +47,18 @@ classdef egm
             end
         end
 
+        %% gives us the function of the budget constraint so we can 
+        % find the implied a
+        % inputs: c+apr, w*eps, r, tau
+        % outputs: value of budget constraint for given x
+        function budget = impliedbc(x, bcterms)
+            capr = bcterms.capr;
+            we = bcterms.we;
+            r = bcterms.r;
+            tau = bcterms.tau;
+
+            budget = (1+r)*x + we - (r*x + we)^(1-tau) - capr;
+
+        end
     end
 end
