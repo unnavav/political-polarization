@@ -21,7 +21,7 @@ addpath(genpath(pwd));
 
 vTol = 1e-6; gTol = 1e-8; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; goal = .3626;
 
 nl = 7;
 na = 250;
@@ -151,7 +151,10 @@ while DIST > dTol
     t = adistr.*Tmu; %getting all taxes collected
     t = sum(sum(t));
 
-    if t>goal
+    Y = kagg^(alpha)*lagg^(1-alpha);
+    G_Y = t/Y;
+
+    if G_Y>goal
        fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
            "\tTax rate is too high.\n\n", t, lamval)
        lh = (lamval*adj+(1-adj)*lh);
