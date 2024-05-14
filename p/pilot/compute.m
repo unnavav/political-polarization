@@ -4,60 +4,57 @@ classdef compute
             ni = max(size(searchgrid));
             r = (3-sqrt(5))/2;
 
+
             a = searchgrid(1);
             b = searchgrid(ni);
             c = (1-r)*a + r*b;
             d = r*a + (1-r)*b;
 
-            beta = params(2);
+            vc = compute.getSplineVal(Cvals, c, searchgrid);
+            fc = -HH.util(c, params, vc);
 
-            vc = compute.linterpolate(Cvals, searchgrid, c);
-            fc = -(aiyagari.uc(c, params) + beta*vc);
-            
-            vd = compute.linterpolate(Cvals, searchgrid, d);
-            fd = -(aiyagari.uc(d, params) + beta*vd);
+            vd = compute.getSplineVal(Cvals, d, searchgrid);
+            fd = -HH.util(d, params, vd);
             iter_ct = 1;
 
 %             disp(fc);
 %             disp(fd);
-            v = [c fc vc aiyagari.uc(c, params); 
-                d fd vd aiyagari.uc(d, params)];
+            v = [c fc; d fd];
 
             while abs(a - b) > prec
-                if fc >= fd
+                if fc > fd
                     a = c;
                     c = d;
-                    d = r*a + (1-r)*b; 
-            
+                    d = r*a + (1-r)*b;
+
                     fc = fd;
-                    vd = compute.linterpolate(Cvals, searchgrid, d);
-                    fd = -(aiyagari.uc(d, params) + beta*vd);
-                    v = [v; d fd vd aiyagari.uc(d, params)];
+                    vd = compute.getSplineVal(Cvals, d, searchgrid);
+                    fd = -HH.util(d, params, vd);
+                    v = [v; d fd];
                 else
                     b = d;
                     d = c;
                     c = (1-r)*a + r*b;
 
                     fd = fc;
-                    vc = compute.linterpolate(Cvals, searchgrid, c);
-                    fc = -(aiyagari.uc(c, params) + beta*vc);
-                    v = [v; c fc vc aiyagari.uc(c,params)];
+                    vc = compute.getSplineVal(Cvals, c, searchgrid);
+                    fc = -HH.util(c, params, vc);
+                    v = [v; c fc];
                 end
-
+% 
 %                 fprintf("Results of iteration %i: [a c d b] = [%4.4f %4.4f %4.4f %4.4f]\n", ...
 %                     iter_ct, a, c, d, b);
 % 
 %                 disp(fc);
-
+% % 
                 iter_ct = iter_ct+1;
             end
-            
+
 %             disp(fc);
 
             aval = c;
-            res = (aiyagari.uc(c, params) + beta*vc);
-            v=sortrows(v);
-
+            vc = compute.getSplineVal(Cvals, c, searchgrid);
+            res = HH.util(c, params, vc);        
         end
 
         function v = linterpolate(Vvec, searchgrid, vi)

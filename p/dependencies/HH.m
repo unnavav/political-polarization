@@ -2,7 +2,7 @@ classdef HH
     methods(Static)
 
 
-        function [V, g] = solve(nl, na, terms, vTol)
+        function [V, g] = solve(nl, na, terms, vTol, gTol)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -12,8 +12,7 @@ classdef HH
             lgrid = terms.lgrid;
             agrid = terms.agrid;
             pil = terms.pil;
-            lambda = terms.lambda;
-            tau = terms.tau;
+            T = terms.T;
 
             V = zeros(nl, na);
             EV = V;
@@ -44,7 +43,6 @@ classdef HH
 
             dist = 10;
             iter_ct = 1;
-            options = optimoptions('fsolve','Display','none');
             
             while dist > vTol
             
@@ -53,77 +51,43 @@ classdef HH
                     EV(il, :) = pil(il,:)*V(:,:);
                 end
 
-                DEV = egm.numdev(EV,agrid);
+                
+                C = zeros(4, na-1, nl);
+                %fit splines
+                for il = 1:nl
+                    fvals = EV(il, :);
+                    C(:,:,il) = aubhik.spline(na-2, 1, agrid, fvals');
+                end
 
-                %now find endogenous grid
-            
-                parfor il = 1:nl
-                    w_e = wage*lgrid(il);
-                    for apr = 1:na            
-                        a_pr = agrid(apr);
-                        c = (beta*DEV(il, apr))^(-1/sigma);
-                        capr = c+w_e;
-                        
-                        bcterms = struct('we', w_e, ...
-                            'capr', capr, ...
-                            'r', r, ...
-                            'tau', tau);
-                        budgetfun = @(x)egm.impliedbc(x, bcterms);
-                        E(il, ia)  = fsolve(budgetfun, a_pr, options);      %%%% see if this slows it down        
-                        
+                % now GSS over spline
 
+                for ia = 1:na
+                    for il = 1:nl
+                        
+                        yval = abs(T(il, ia));
+                        params = [yval beta sigma];
+                        [res, aguess] = compute.gss(C(:,:,il), params, ...
+                                                agrid, gTol);  
+
+                        V(il, ia) = res;
+                        g(il, ia) = aguess;
                     end
                 end
                 
-                % now project it back onto agrid
-    
-                for il = 1:nl
-                    w_e = wage*lgrid(il);
-                    
-                    for ia = 1:na
-                        lb = min(E(il, :));
-                        
-                        ahat = agrid(ia);
-                        
-                        if ahat < lb
-                            g(il, ia) = 0;
-                        else
-                            [ix, we] = compute.weight(E(il, :), ahat);
-                            g(il, ia) = we*E(il, ix) + (1-we)*E(il, ix + 1);
-                        end
-                        
-                        c = gov.tax((1+r)*ahat + w_e, lambda, tau) ...
-                            - r*phi - g(il, ia);
-                        
-                        if c < 0
-                            disp([il ia])
-                        end
-                        
-                        if sigma == 1
-                            V(il, ia) = log(c) + beta*V1(il, ia);
-                        else
-                            V(il, ia) = (c^(1-sigma))/(1-sigma) + ...
-                                beta*V1(il, ia);
-                        end
-                        
-                    end
+                dist = compute.dist(V, V1, 2);
+            
+                if mod(iter_ct, 100) == 0
+                    fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
                 end
+            
+                iter_ct = iter_ct + 1;
+            
+                V1 = V;            
             end
+        
+            fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
 
-            dist = compute.dist(V, V1, 2);
-        
-%                 if mod(iter_ct, 100) == 0
-%                     fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
-%                 end
-        
-            iter_ct = iter_ct + 1;
-        
-            V1 = V;            
         end
-
-        fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
-
-    end
 
         function [mu1, Kagg] = getDist(g, amu, agrid, pil)
 
@@ -240,5 +204,18 @@ classdef HH
             end
         end
 
+        function utils = util(apr, params, vc)
+            y = params(1);
+            beta = params(2);
+            sigma = params(3);
+
+            if y-apr <= 0
+                utils = -100000;
+            elseif sigma == 1
+                utils = log(y-apr) + beta*vc;
+            else
+                utils = ((y-apr)^(1-sigma))/(1-sigma) + beta*vc;
+            end
+        end
     end
 end

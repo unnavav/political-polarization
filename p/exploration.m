@@ -16,8 +16,11 @@ addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
 % project
-delete(gcp('nocreate'));
-parpool('local',4);
+% delete(gcp('nocreate'));
+% parpool('local',4);
+% addAttachedFiles(gcp, "dependencies/compute.m")
+
+load handel
 
 vTol = 1e-6; gTol = 1e-8; dTol = 1e-3;
 %% params
@@ -108,7 +111,7 @@ while DIST > dTol
         wage_inc = repmat(wage*lgrid,na,1)';
         cap_inc = repmat(r*(agrid-1),nl,1);
         Y = wage_inc+cap_inc;
-        T = gov.tax(Y,lamval,tau)-2;
+        T = gov.tax(Y,lamval,tau);
     
         wage_inc_mu = repmat(wage*lgrid, nmu,1)';
         cap_inc_mu = repmat(r*amu, nl, 1);
@@ -126,8 +129,14 @@ while DIST > dTol
             'pil', pil, ...
             'T', T);
     
-        [V, g] = HH.solve(nl, na, terms, vTol);
+        [V, g] = HH.solve(nl, na, terms, vTol, gTol);
     
+        tiledlayout(2,1);
+        nexttile
+        mesh(V)
+        nexttile
+        mesh(g)
+
         % asset distr
         fprintf("\tSolving asset distribution:\n")
         [adistr, kagg] = HH.getDist(g, amu, agrid, pil);
@@ -153,6 +162,7 @@ while DIST > dTol
 
     Y = kagg^(alpha)*lagg^(1-alpha);
     G_Y = t/Y;
+    fprintf("\n Government/Output = %4.4f", G_Y);
 
     if G_Y>goal
        fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
@@ -174,59 +184,4 @@ while DIST > dTol
     kDist = 10;
 end
 
-tiledlayout(3,1);
-nexttile
-mesh(V)
-nexttile
-mesh(EV)
-nexttile
-mesh(g)
-% nexttile
-% mesh(EV(:,:,1,1) - EV(:,:,1,2))
-
-%% (B) getting perfect foresight impulse responses
-
-T = 150;
-f = @(rho, t, e0) rho^t*e0;
-rho = .9;
-e0 = 0.01;
-k0 = 1;
-lambda = .9;
-
-At = ones(T,1);
-for t = 1:T
-    At(t) = f(rho, t, e0);
-end
-
-At = exp(At);
-At = [ones(10,1); At];
-At = At';
-At = At(1:T);
-
-params = [alpha beta delta sigma lagg];
-
-[At, yt, ct, kt] = predict.perfectForesight(At,kagg,k0,lambda,params,vTol);
-
-col1 = [.159 .072 .130]*(1/(.255));
-col2 = [.255 .217 .120]*(1/(.255));
-col3 = [.110 .182 .095]*(1/(.255));
-col4 = [.086 .145 .128]*(1/(.255));
-
-%plotting
-tiledlayout(2,2)
-nexttile
-plot(At, 'Color', col1)
-title("TFP")
-nexttile
-plot(yt, 'Color', col2)
-title("Output")
-nexttile
-plot(kt, 'Color', col3)
-title("Capital")
-nexttile
-plot(ct, 'Color', col4)
-title("Consumption")
-
-exportgraphics(gcf, "../v/Q2b_charts.png", 'Resolution', 500)
-
-% need to figure out impulse responses 
+sound(y, Fs)
