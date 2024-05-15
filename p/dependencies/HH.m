@@ -20,6 +20,8 @@ classdef HH
             V1 = V;
             E = EV;
 
+            A = repmat(agrid, nl, 1);
+
             % initialize value functions
             V = zeros(nl, na); %(labor, assets, my type, goverment type)
 
@@ -51,26 +53,43 @@ classdef HH
                     EV(il, :) = pil(il,:)*V(:,:);
                 end
 
-                
-                C = zeros(4, na-1, nl);
-                %fit splines
+                DEV = egm.numdev(EV, agrid); 
+
+                C = (beta*DEV).^(-1/sigma);
+
+                % get endogenous grid
+
                 for il = 1:nl
-                    fvals = EV(il, :);
-                    C(:,:,il) = aubhik.spline(na-2, 1, agrid, fvals');
-                end
+                    C_l = C(il,:);
+                    we = wage*lgrid(il);
 
-                % now GSS over spline
+                    for ia = 1:na
+                        a = agrid(ia);
 
-                for ia = 1:na
-                    for il = 1:nl
-                        
-                        yval = abs(T(il, ia));
-                        params = [yval beta sigma];
-                        [res, aguess] = compute.gss(C(:,:,il), params, ...
-                                                agrid, gTol);  
+                        rhs = (1+r)*a + we - lambda*(r*a + we)^(1-tau);
 
-                        V(il, ia) = res;
-                        g(il, ia) = aguess;
+                        if sigma == 1
+                            utils = log(rhs - agrid)+ beta*EV(il,:);
+                        else
+                            utils = ((rhs - agrid)^(1-sigma))/(1-sigma) ...
+                                + beta*EV(il,:);
+                        end
+
+                        [inc, ix] = max(utils);
+                        if ix ~= 1 && ix ~= na
+                            searchvals = rhs(ix-1:ix+1) - agrid(ix-1:ix+1);
+                            evvals = beta*EV(ix-1:ix+1);
+                        elseif ix == 1
+                            searchvals = rhs(ix:ix+1)- agrid(ix:ix+1);
+                            evvals = beta*EV(ix:ix+1);
+                        else
+                            searchvals = rhs(ix-1:ix)- agrid(ix-1:ix);
+                            evvals = beta*EV(ix-1:ix);
+                        end
+
+                        [res, aguess, v] = compute.gss(EV(il,:), agrid, vTol);  
+
+                        E(il, ia) = aguess;
                     end
                 end
                 

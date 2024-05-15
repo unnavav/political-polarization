@@ -1,6 +1,6 @@
 classdef compute
     methods(Static)
-        function [res, aval, v] = gss(Cvals, params, searchgrid, prec)            
+        function [res, aval, v] = gss(Cvals, searchgrid, prec)            
             ni = max(size(searchgrid));
             r = (3-sqrt(5))/2;
 
@@ -10,11 +10,13 @@ classdef compute
             c = (1-r)*a + r*b;
             d = r*a + (1-r)*b;
 
-            vc = compute.getSplineVal(Cvals, c, searchgrid);
-            fc = -HH.util(c, params, vc);
+            [ix, we] = compute.weight(searchgrid, c);
+            vc = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
+            fc = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vc;
 
-            vd = compute.getSplineVal(Cvals, d, searchgrid);
-            fd = -HH.util(d, params, vd);
+            [ix, we] = compute.weight(searchgrid, d);
+            vd = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
+            fd = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vd;
             iter_ct = 1;
 
 %             disp(fc);
@@ -28,17 +30,18 @@ classdef compute
                     d = r*a + (1-r)*b;
 
                     fc = fd;
-                    vd = compute.getSplineVal(Cvals, d, searchgrid);
-                    fd = -HH.util(d, params, vd);
-                    v = [v; d fd];
+                    [ix, we] = compute.weight(searchgrid, d);
+                    vd = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
+                    fd = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vd;                    v = [v; d fd];
                 else
                     b = d;
                     d = c;
                     c = (1-r)*a + r*b;
 
                     fd = fc;
-                    vc = compute.getSplineVal(Cvals, c, searchgrid);
-                    fc = -HH.util(c, params, vc);
+                    [ix, we] = compute.weight(searchgrid, c);
+                    vc = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
+                    fc = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vc;
                     v = [v; c fc];
                 end
 % 
@@ -53,8 +56,9 @@ classdef compute
 %             disp(fc);
 
             aval = c;
-            vc = compute.getSplineVal(Cvals, c, searchgrid);
-            res = HH.util(c, params, vc);        
+            [ix, we] = compute.weight(searchgrid, c);
+            vc = -(we*Cvals(ix) + (1-we)*Cvals(ix+1));
+            res = -(we*Cvals(ix) + (1-we)*Cvals(ix+1)) + vc;
         end
 
         function v = linterpolate(Vvec, searchgrid, vi)

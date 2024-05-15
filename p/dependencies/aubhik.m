@@ -19,7 +19,7 @@ classdef aubhik
             [L, U, dtau] = aubhik.spa(knots, r, indicator);
             
             % Compute piecewise polynomial cubic spline interpolant
-            [c] = aubhik.spb(knots, fvals, r, m, L, U, dtau', indicator, SVEC);
+            [c] = aubhik.spb(knots, fvals, r, m, L, U, dtau, indicator, SVEC);
 
         end
 
@@ -169,9 +169,9 @@ classdef aubhik
             
             % Set up RHS in search for interior slopes.
             if (indicator(1:5) == 'not-a')
-               [B, df] = aubhik.SPRHS(dtau, r, m, fvals);
+               [B, df] = aubhik.SPRHS(dtau', r, m, fvals');
             else
-               [B, df] = aubhik.SPRHS(dtau, r, m, fvals, indicator, SVEC);
+               [B, df] = aubhik.SPRHS(dtau', r, m, fvals', indicator, SVEC);
             end
             
             %An alternative to the factorization is simply s = TX\B;
