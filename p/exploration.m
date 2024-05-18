@@ -16,19 +16,19 @@ addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
 % project
-% delete(gcp('nocreate'));
-% parpool('local',4);
-% addAttachedFiles(gcp, "dependencies/compute.m")
+delete(gcp('nocreate'));
+parpool('local',4);
+addAttachedFiles(gcp, "dependencies")
 
 load handel
 
-vTol = 1e-6; gTol = 1e-8; dTol = 1e-3;
+vTol = 1e-5; gTol = 1e-6; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; goal = .3626;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 7; phi = 0; goal = .3626;
 
 nl = 7;
-na = 250;
-nmu = 2500;
+na = 100;
+nmu = na*10;
 
 al = 0+phi; ah = 100+phi;
 
@@ -61,15 +61,15 @@ rst = 1.0/beta - 1.0;
 klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
-klmult = -0.3;
-khmult = 2;
+klmult = 0;
+khmult = 1.2;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
 
 % make asset grid
 
-agrid = linspace(al, ah, na);
+agrid = compute.logspace(al, ah, na)';
 
 % make distribution grid
 
@@ -80,14 +80,14 @@ tau = 0.181; %heathcote et al 2017
 
 % lambda upper lower bounds
 ll = 0; lh = 1;
-lamval = .8; %based on some guess from a 3D plot I made; this gives transfers
-adj = .05;
+lamval = .01; %based on some guess from a 3D plot I made; this gives transfers
+adj = .5;
 
 %% solving for wages and r by getting aggregate capital
 
 kDist = 10;
-gDist = 10;
-f=10;
+gDist = 10; 
+f=10; 
 
 kval = (kl+ kh)/2;
 
@@ -109,7 +109,7 @@ while DIST > dTol
         % making tax schedule
         
         wage_inc = repmat(wage*lgrid,na,1)';
-        cap_inc = repmat(r*(agrid-1),nl,1);
+        cap_inc = repmat(r*(agrid),nl,1);
         Y = wage_inc+cap_inc;
         T = gov.tax(Y,lamval,tau);
     
@@ -164,7 +164,7 @@ while DIST > dTol
     G_Y = t/Y;
     fprintf("\n Government/Output = %4.4f", G_Y);
 
-    if G_Y>goal
+    if G_Y<goal
        fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
            "\tTax rate is too high.\n\n", t, lamval)
        lh = (lamval*adj+(1-adj)*lh);
@@ -174,14 +174,20 @@ while DIST > dTol
        ll = (lamval*adj+(1-adj)*ll);
     end
 
-    gDist = abs(t);
+    gDist = abs(G_Y - goal);
     lamval = .5*(ll + lh);
 
     DIST = max(kDist, gDist);
     fprintf("||DIST|| = %4.4f\n", DIST)
-    kl = klwrbnd*klmult;
-    kh = klwrbnd*khmult;
+    kl = kval*klmult;
+    kh = kval*2;
     kDist = 10;
 end
 
 sound(y, Fs)
+
+%%
+date = string(datetime("today"));
+filename = strcat("results_",date);
+cd ..\d
+save(filename)

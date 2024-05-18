@@ -1,22 +1,19 @@
 classdef compute
     methods(Static)
-        function [res, aval, v] = gss(Cvals, searchgrid, prec)            
+        function [res, aval, v] = gss(Cvals, params, searchgrid, prec)            
             ni = max(size(searchgrid));
             r = (3-sqrt(5))/2;
-
 
             a = searchgrid(1);
             b = searchgrid(ni);
             c = (1-r)*a + r*b;
             d = r*a + (1-r)*b;
 
-            [ix, we] = compute.weight(searchgrid, c);
-            vc = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
-            fc = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vc;
+            vc = compute.linterpolate(Cvals, searchgrid, c);
+            fc = -HH.util(c, params, vc);
 
-            [ix, we] = compute.weight(searchgrid, d);
-            vd = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
-            fd = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vd;
+            vd = compute.linterpolate(Cvals, searchgrid, d);
+            fd = -HH.util(d, params, vd);
             iter_ct = 1;
 
 %             disp(fc);
@@ -30,18 +27,17 @@ classdef compute
                     d = r*a + (1-r)*b;
 
                     fc = fd;
-                    [ix, we] = compute.weight(searchgrid, d);
-                    vd = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
-                    fd = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vd;                    v = [v; d fd];
+                    vd = compute.linterpolate(Cvals, searchgrid, d);
+                    fd = -HH.util(d, params, vd);
+                    v = [v; d fd];
                 else
                     b = d;
                     d = c;
                     c = (1-r)*a + r*b;
 
                     fd = fc;
-                    [ix, we] = compute.weight(searchgrid, c);
-                    vc = (we*Cvals(ix) + (1-we)*Cvals(ix+1));
-                    fc = -log(we*searchgrid(ix) + (1-we)*searchgrid(ix+1)) - vc;
+                    vc = compute.linterpolate(Cvals, searchgrid, c);
+                    fc = -HH.util(c, params, vc);
                     v = [v; c fc];
                 end
 % 
@@ -56,17 +52,16 @@ classdef compute
 %             disp(fc);
 
             aval = c;
-            [ix, we] = compute.weight(searchgrid, c);
-            vc = -(we*Cvals(ix) + (1-we)*Cvals(ix+1));
-            res = -(we*Cvals(ix) + (1-we)*Cvals(ix+1)) + vc;
+            vc = compute.linterpolate(Cvals, searchgrid, c);
+            res = HH.util(c, params, vc);
         end
 
         function v = linterpolate(Vvec, searchgrid, vi)
             ni = max(size(Vvec));
-            if vi <= searchgrid(1,1)
+            if vi <= searchgrid(1)
 %                 il = 1;
                 v = Vvec(1);
-            elseif vi >= searchgrid(ni,1)
+            elseif vi >= searchgrid(ni)
 %                 il = nk-1;
                 v = Vvec(ni);
             else

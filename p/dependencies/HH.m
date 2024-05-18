@@ -45,51 +45,26 @@ classdef HH
 
             dist = 10;
             iter_ct = 1;
-            
-            while dist > vTol
+            max_iter = 1000;
+            while (dist > vTol && iter_ct <= max_iter)
             
                 % get expected value function to start with
                 for il = 1:nl
                     EV(il, :) = pil(il,:)*V(:,:);
                 end
 
-                DEV = egm.numdev(EV, agrid); 
-
-                C = (beta*DEV).^(-1/sigma);
-
-                % get endogenous grid
-
                 for il = 1:nl
-                    C_l = C(il,:);
-                    we = wage*lgrid(il);
+                    EV_l = EV(il,:);
 
-                    for ia = 1:na
-                        a = agrid(ia);
+                    parfor ia = 1:na
+                        y = T(il, ia);
 
-                        rhs = (1+r)*a + we - lambda*(r*a + we)^(1-tau);
+                        params = [y beta sigma];
 
-                        if sigma == 1
-                            utils = log(rhs - agrid)+ beta*EV(il,:);
-                        else
-                            utils = ((rhs - agrid)^(1-sigma))/(1-sigma) ...
-                                + beta*EV(il,:);
-                        end
+                        [res, aguess, v] = compute.gss(EV_l, params, agrid, vTol);  
 
-                        [inc, ix] = max(utils);
-                        if ix ~= 1 && ix ~= na
-                            searchvals = rhs(ix-1:ix+1) - agrid(ix-1:ix+1);
-                            evvals = beta*EV(ix-1:ix+1);
-                        elseif ix == 1
-                            searchvals = rhs(ix:ix+1)- agrid(ix:ix+1);
-                            evvals = beta*EV(ix:ix+1);
-                        else
-                            searchvals = rhs(ix-1:ix)- agrid(ix-1:ix);
-                            evvals = beta*EV(ix-1:ix);
-                        end
-
-                        [res, aguess, v] = compute.gss(EV(il,:), agrid, vTol);  
-
-                        E(il, ia) = aguess;
+                        V(il, ia) = res;
+                        g(il, ia) = aguess
                     end
                 end
                 
