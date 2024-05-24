@@ -247,5 +247,19 @@ classdef compute
                 x = max(x);
             end
         end
+
+        function distr = condense(adistr, amu, agrid)
+            [nl, nmu, np] = size(adistr);
+            [na] = length(agrid);
+            distr = zeros(nl, na, np);
+            for im = 1:nmu
+                [ix, we] = compute.weight(agrid, amu(im));
+
+                for ip = 1:np
+                    distr(:, ix, ip) = distr(:, ix, ip) + we*adistr(:, im, ip);
+                    distr(:, ix+1, ip) = distr(:, ix+1, ip) + (1-we)*adistr(:, im, ip);
+                end
+            end
+        end
     end
 end

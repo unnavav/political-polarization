@@ -2,7 +2,7 @@ classdef HH
     methods(Static)
 
 
-        function [V, g] = solve(nl, na, terms, vTol, gTol)
+        function [Va, Vb, EVa, EVb, ga, gb] = solve(nl, na, np, terms, vTol, gTol)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -12,34 +12,45 @@ classdef HH
             lgrid = terms.lgrid;
             agrid = terms.agrid;
             pil = terms.pil;
-            T = terms.T;
+            Y = terms.Y;
+            p = terms.p;
+            ubonus = terms.ubonus;
 
-            V = zeros(nl, na);
-            EV = V;
-            g = V;
-            V1 = V;
-            E = EV;
-
-            A = repmat(agrid, nl, 1);
-
-            % initialize value functions
-            V = zeros(nl, na); %(labor, assets, my type, goverment type)
+            Va = zeros(nl, na, np);
+            EVa = Va;
+            ga = Va;
+            V1a = Va;
+            Vb = Va;
+            EVb = Vb;
+            gb = Vb;
+            V1b = Vb;
 
             for il = 1:nl
-                l = lgrid(il);
-                for ia = 1:na
-                    a = agrid(ia);
-            
-                    max_cons = wage*l + (1+r)*a - r*phi;
-                       
-                    max_cons = max_cons - T(il, ia);
+                parfor ia = 1:na
+                    for ip = 1:np
+                
+                        max_cons = Y(il, ia, ip);
                          
-                    if sigma == 1
-                        V(il, ia) = log(max_cons)/(1-beta); 
-                    else
-                        V(il, ia) = (max_cons^(1-sigma))/((1-beta)*(1-sigma));
+                        if ip == 1
+                            if sigma == 1
+                                Va(il, ia, ip) = (log(max_cons)+ubonus)/(1-beta); 
+                                Vb(il, ia, ip) = (log(max_cons))/(1-beta); 
+                            else
+                                Va(il, ia, ip) = ((max_cons^(1-sigma))/(1-sigma) + ...
+                                    ubonus)/(1-beta);
+                                Vb(il, ia, ip) = ((max_cons^(1-sigma))/(1-sigma))/(1-beta);
+                            end
+                        else
+                            if sigma == 1
+                                Vb(il, ia, ip) = (log(max_cons)+ubonus)/(1-beta); 
+                                Va(il, ia, ip) = (log(max_cons))/(1-beta); 
+                            else
+                                Vb(il, ia, ip) = ((max_cons^(1-sigma))/(1-sigma) + ...
+                                    ubonus)/(1-beta);
+                                Va(il, ia, ip) = ((max_cons^(1-sigma))/(1-sigma))/(1-beta);
+                            end
+                        end
                     end
-
                 end
             end
 
@@ -47,63 +58,93 @@ classdef HH
             iter_ct = 1;
             max_iter = 1000;
             while (dist > vTol && iter_ct <= max_iter)
-            
                 % get expected value function to start with
-                for il = 1:nl
-                    EV(il, :) = pil(il,:)*V(:,:);
+                for ip = 1:np
+                    Vap1 = Va(:,:, 1); Vap2 = Va(:,:, 2);
+                    Vbp1 = Vb(:,:, 1); Vbp2 = Vb(:,:, 2);
+                    prob = p(ip);
+                    parfor il = 1:nl
+                        EVa(il, :, ip) = prob*pil(il,:)*Vap1 + ...
+                            (1-prob)*pil(il,:)*Vap2;
+                        EVb(il, :, ip) = prob*pil(il,:)*Vbp1 + ...
+                            (1-prob)*pil(il,:)*Vbp2;
+                    end
                 end
 
                 for il = 1:nl
-                    EV_l = EV(il,:);
-
-                    parfor ia = 1:na
-                        y = T(il, ia);
-
-                        params = [y beta sigma];
-
-                        [res, aguess, v] = compute.gss(EV_l, params, agrid, vTol);  
-
-                        V(il, ia) = res;
-                        g(il, ia) = aguess
+                    for ip = 1:np
+                    EVa_l = EVa(il,:,ip);
+                    EVb_l = EVb(il,:,ip);
+                        parfor ia = 1:na
+                            y = Y(il, ia, ip);
+                                    
+                            if ip == 1
+                                params = [y beta sigma ubonus];    
+                                [res, aguess] = compute.gss(EVa_l, params, agrid, gTol);  
+                                Va(il, ia, ip) = res;
+                                ga(il, ia, ip) = aguess
+                                params = [y beta sigma 0];    
+                                [res, aguess] = compute.gss(EVb_l, params, agrid, gTol);  
+                                Vb(il, ia, ip) = res;
+                                gb(il, ia, ip) = aguess;
+                            else
+                                params = [y beta sigma 0];    
+                                [res, aguess] = compute.gss(EVa_l, params, agrid, gTol);  
+                                Va(il, ia, ip) = res;
+                                ga(il, ia, ip) = aguess
+                                params = [y beta sigma ubonus];    
+                                [res, aguess] = compute.gss(EVb_l, params, agrid, gTol);  
+                                Vb(il, ia, ip) = res;
+                                gb(il, ia, ip) = aguess;
+                            end
+                        end
                     end
                 end
                 
-                dist = compute.dist(V, V1, 2);
+                dist = max(compute.dist(Va, V1a, 3), ...
+                    compute.dist(Vb, V1b, 3));
             
-                if mod(iter_ct, 100) == 0
+                if mod(iter_ct, 10) == 0
                     fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
                 end
             
                 iter_ct = iter_ct + 1;
             
-                V1 = V;            
+                V1a = Va;
+                V1b = Vb;
             end
         
             fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
 
         end
 
-        function [mu1, Kagg] = getDist(g, amu, agrid, pil)
+        function [mu1, Kagg] = getDist(ga, gb, amu, agrid, pil, pctA)
 
-            [nl, ~] = size(g);
+            [nl, ~, np] = size(ga);
             nmu = max(size(amu));
-            mu = zeros(nl, nmu); ixgrid = mu; wegrid = mu;
-
+            mu = zeros(nl, nmu, np); 
+            ixagrid = mu; weagrid = mu; ixbgrid = mu; webgrid = mu;
+           
             for im = 1:nmu
                 kval = amu(im);
                 for il = 1:nl  
+                    for ip = 1:np
                         % We linearly interpolate the policy function on bgrid to compute
                         % bfval on the distribution support.
                         
                         [ix, we] = compute.weight(agrid, kval);
                             
                         %split between rep and dem capital choices
-                        kdval = g(il,ix)*we + g(il,ix+1)*(1.0 - we);
-                        
-                        [ix, we] = compute.weight(amu, kdval);
-                                
-                        ixgrid(il, im) = ix;
-                        wegrid(il, im) = we;
+                        kdaval = ga(il,ix, ip)*we + ga(il,ix+1, ip)*(1.0 - we);
+                        kdbval = gb(il,ix, ip)*we + gb(il,ix+1, ip)*(1.0 - we);
+
+                        [ix, we] = compute.weight(amu, kdaval);
+                        ixagrid(il, im, ip) = ix;
+                        weagrid(il, im, ip) = we;
+                        [ix, we] = compute.weight(amu, kdbval);
+                        ixbgrid(il, im, ip) = ix;
+                        webgrid(il, im, ip) = we;
+                    end
                 end
             end
             
@@ -111,7 +152,9 @@ classdef HH
             
             for i = 1:nmu
                 for il = 1:nl
-                    mu(il,i) = 1.0/(nmu*nl);
+                    for ip = 1:np
+                        mu(il,i, ip) = 1.0/(nmu*nl*np);
+                    end
                 end
             end
 
@@ -121,24 +164,41 @@ classdef HH
                 
                 for im = 1:nmu
                     for il = 1:nl
+                        for ip = 1:np
 
-                        ix = ixgrid(il,im); we = wegrid(il,im); muval = mu(il,im);
-                        
-                        if muval > 0
-                            for jl = 1:nl
-                                if (ix < nmu)
-                                    mu1(jl,ix) = mu1(jl,ix) + pil(il,jl)*muval*we;
-                                    mu1(jl,ix+1) = mu1(jl,ix+1) + pil(il,jl)*muval*(1.0 - we);
-                                else
-                                    mu1(jl,ix) = mu1(jl,ix) + pil(il,jl)*muval*we;
+                            ixa = ixagrid(il,im, ip); wea = weagrid(il,im, ip); 
+                            ixb = ixbgrid(il,im, ip); web = webgrid(il,im, ip); 
+                            muval = mu(il, im, ip);
+                            
+                            if muval > 0
+                                for jl = 1:nl
+                                    if (ixa < nmu)
+                                        mu1(jl,ixa, ip) = mu1(jl,ixa, ip) + ...
+                                            pctA*pil(il,jl)*muval*we;
+                                        mu1(jl,ixa+1, ip) = mu1(jl,ixa+1, ip) + ...
+                                            pctA*pil(il,jl)*muval*(1.0 - we);
+                                    else
+                                        mu1(jl,ixa, ip) = mu1(jl,ixa,ip) + ...
+                                            pctA*pil(il,jl)*muval*we;
+                                    end
+                                    
+                                    if (ixb < nmu)
+                                        mu1(jl,ixb, ip) = mu1(jl,ixb, ip) + ...
+                                            (1-pctA)*pil(il,jl)*muval*we;
+                                        mu1(jl,ixb+1, ip) = mu1(jl,ixb+1, ip) + ...
+                                            (1-pctA)*pil(il,jl)*muval*(1.0 - we);
+                                    else
+                                        mu1(jl,ixb, ip) = mu1(jl,ixb,ip) + ...
+                                            (1-pctA)*pil(il,jl)*muval*we;
+                                    end
                                 end
                             end
-                        end
 
+                        end
                     end
                 end
                                 
-                distance = compute.dist(mu1, mu, 2);
+                distance = compute.dist(mu1, mu, 3);
                 
 %                 if (mod(iter_ct,200) == 0)
 %                     s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
@@ -151,10 +211,10 @@ classdef HH
                 mu = mu1;   
             end
             s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-                iter_ct, distance, sum(sum(mu)));
+                iter_ct, distance, sum(sum(sum(mu))));
             disp(s);
 
-            distr2500 = sum(mu,1);
+            distr2500 = sum(sum(mu,3),1);
             Kagg = amu*distr2500';
 
         end
@@ -202,13 +262,14 @@ classdef HH
             y = params(1);
             beta = params(2);
             sigma = params(3);
+            ubonus = params(4);
 
             if y-apr <= 0
                 utils = -100000;
             elseif sigma == 1
-                utils = log(y-apr) + beta*vc;
+                utils = log(y-apr) + ubonus + beta*vc;
             else
-                utils = ((y-apr)^(1-sigma))/(1-sigma) + beta*vc;
+                utils = ((y-apr)^(1-sigma))/(1-sigma) + ubonus + beta*vc;
             end
         end
     end

@@ -22,21 +22,19 @@ addAttachedFiles(gcp, "dependencies")
 
 load handel
 
-vTol = 1e-5; gTol = 1e-6; dTol = 1e-3;
+vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 7; phi = 0; goal = .3626;
-
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
+ 
 nl = 7;
-na = 100;
+na = 75;
 nmu = na*10;
+np = 2;
 
 al = 0+phi; ah = 100+phi;
 
 wage = 1.1; r = 0.04;
 
-%political params
-identity = 0.01; pctDem = .5;
-goal = .1;
 % get labor distribution and aggregate values
 %step 1: make labor grid and labor transition matrix
 
@@ -62,7 +60,7 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 0;
-khmult = 1.2;
+khmult = .;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -80,10 +78,28 @@ tau = 0.181; %heathcote et al 2017
 
 % lambda upper lower bounds
 ll = 0; lh = 1;
-lamval = .01; %based on some guess from a 3D plot I made; this gives transfers
+lamval = .01; % people are really reactive to taxes
 adj = .5;
 
+%party tax regimes
+tgrid = [.45 .5]; 
+
+p = [.3 .15];
+
+ubonus = .005;
+pctA = .5;
+
 %% solving for wages and r by getting aggregate capital
+
+adistr = zeros(nl, nmu, np);
+
+for i = 1:nmu
+    for il = 1:nl
+        for ip = 1:np
+            adistr(il,i, ip) = 1.0/(nmu*nl*np);
+        end
+    end
+end
 
 kDist = 10;
 gDist = 10; 
@@ -93,101 +109,192 @@ kval = (kl+ kh)/2;
 
 DIST = max(kDist,gDist);
 
-while DIST > dTol
+VOTES = zeros(na, nl);
 
-    fprintf("\n\n\n--------------------------------- > Lambda = %4.4f", lamval)
+while kDist > dTol
 
-    while kDist > dTol
+    fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
+    fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
+    fprintf("\t Solving value function:\n")
+
+    p = [.3 .7];
+
+    r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
+    wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
+
+    % making tax schedule
     
-        fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
-        fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
-        fprintf("\t Solving value function:\n")
-    
-        r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
-        wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
-    
-        % making tax schedule
-        
-        wage_inc = repmat(wage*lgrid,na,1)';
-        cap_inc = repmat(r*(agrid),nl,1);
-        Y = wage_inc+cap_inc;
-        T = gov.tax(Y,lamval,tau);
-    
-        wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-        cap_inc_mu = repmat(r*amu, nl, 1);
-        Ymu = wage_inc_mu + cap_inc_mu;
-        Tmu = gov.tax(Ymu, lamval, tau);
-    
-        %prepare for VFI
-        terms = struct('beta', beta, ...
-            'sigma', sigma, ...
-            'phi', phi, ...
-            'r', r, ...
-            'wage', wage, ...
-            'agrid', agrid, ...
-            'lgrid', lgrid, ...
-            'pil', pil, ...
-            'T', T);
-    
-        [V, g] = HH.solve(nl, na, terms, vTol, gTol);
-    
-        tiledlayout(2,1);
-        nexttile
-        mesh(V)
-        nexttile
-        mesh(g)
+    wage_inc = repmat(wage*lgrid,na,1)';
+    cap_inc = repmat(r*(agrid),nl,1);
+    Y = wage_inc+cap_inc;
+    T = zeros(nl, na, np);
+    for i = 1:np
+        T(:,:,i) = gov.tax(Y,lamval,tgrid(i));
+    end
+
+    wage_inc_mu = repmat(wage*lgrid, nmu,1)';
+    cap_inc_mu = repmat(r*amu, nl, 1);
+    Ymu = wage_inc_mu + cap_inc_mu;
+    Tmu = zeros(nl, nmu, np);
+    for ip = 1:np
+        Tmu(:,:,ip) = gov.tax(Ymu,lamval,tgrid(ip));
+    end
+
+    G = [0 0];
+    for ip = 1:np
+        G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
+        Y(:,:,ip) = T(:,:,ip)+G(ip);
+    end
+
+    %prepare for VFI
+    terms = struct('beta', beta, ...
+        'sigma', sigma, ...
+        'phi', phi, ...
+        'r', r, ...
+        'wage', wage, ...
+        'agrid', agrid, ...
+        'lgrid', lgrid, ...
+        'pil', pil, ...
+        'Y', Y, ...
+        'G', G, ...
+        'p', p, ...
+        'ubonus',ubonus);
+
+    [Va, Vb, EVa, EVb, ga, gb] = HH.solve(nl, na, np, terms, vTol, gTol);
+
+    VOTESa = (EVa(:,:,2) > EVa(:,:,1));
+    VOTESb = (EVb(:,:,2) > EVb(:,:,1));
+
+    test = EVa(:,:,1) - EVb(:,:,1);
+
+    tiledlayout(5,1)
+    nexttile
+    mesh(ga(:,:,1)-ga(:,:,2));
+    nexttile
+    mesh(gb(:,:,1)-gb(:,:,2));
+    nexttile
+    mesh(ga(:,:,1) - gb(:,:,1));
+    nexttile
+    mesh(VOTESa - VOTESb);
+    nexttile
+    mesh(EVb(:,:,2) - EVb(:,:,1))
 
         % asset distr
-        fprintf("\tSolving asset distribution:\n")
-        [adistr, kagg] = HH.getDist(g, amu, agrid, pil);
- 
-        f = kagg - kval;
-    
-        if f > 0
-            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
-            kl = .5*(kval+kl);
-        else
-            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.", abs(f))
-            kh = .5*(kval+kh);
-        end
+    fprintf("\tSolving asset distribution:\n")
+    [adistr, kagg] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
 
-        kval = .5*(kl + kh);
-    
-        kDist = abs(f);  % check whether the capital diff
-                                        % is changing at all
+    % CONDENSE DISTR
+    acond = compute.condense(adistr, amu, agrid);
+
+    for ip = 1:np
+        share2 = pctA*sum(sum(VOTESa.*acond(:,:,ip))) + ...
+            (1-pctA)*sum(sum(VOTESb.*acond(:,:,ip)));
+        p(ip) = exp(share2/gamma)/(exp(share2/gamma) + exp((1-share2)/gamma));
     end
-    
-    t = adistr.*Tmu; %getting all taxes collected
-    t = sum(sum(t));
 
-    Y = kagg^(alpha)*lagg^(1-alpha);
-    G_Y = t/Y;
-    fprintf("\n Government/Output = %4.4f", G_Y);
+    f = kagg - kval;
 
-    if G_Y<goal
-       fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
-           "\tTax rate is too high.\n\n", t, lamval)
-       lh = (lamval*adj+(1-adj)*lh);
+    if f > 0
+        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
+        kl = .5*(kval+kl);
     else
-       fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
-           "\tTax rate is too low.\n\n", t, lamval);
-       ll = (lamval*adj+(1-adj)*ll);
+        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.", abs(f))
+        kh = .5*(kval+kh);
     end
 
-    gDist = abs(G_Y - goal);
-    lamval = .5*(ll + lh);
+    kval = .5*(kl + kh);
 
-    DIST = max(kDist, gDist);
-    fprintf("||DIST|| = %4.4f\n", DIST)
-    kl = kval*klmult;
-    kh = kval*2;
-    kDist = 10;
+    kDist = abs(f);  % check whether the capital diff
+                                    % is changing at all
 end
-
+    
 sound(y, Fs)
 
 %%
 date = string(datetime("today"));
-filename = strcat("results_",date);
-cd ..\d
+filename = strcat("..\d\results_old_params",date);
 save(filename)
+
+%% graphing
+[xgrid, ygrid] = meshgrid(lgrid,agrid);
+
+
+
+set(gca, 'XTick', [agrid(1) agrid(30:15:75)], 'XTickLabels', xlab)
+
+lrep = repmat(lgrid,1,na)';
+arep = repmat(agrid,nl,1);
+arep = arep(:);
+dat = ga(:,:,1);
+dat = dat(:);
+G1dat = [lrep arep dat];
+
+tiledlayout(1,1)
+graphdata = griddata(G1dat(:,1),G1dat(:,2), G1dat(:,3), xgrid, ygrid);
+ax1 = nexttile;
+mesh(graphdata);
+title('Household A Savings Choices', 'FontSize', 16)
+yticks(1:15:75)
+yticklabels([agrid(1:15:75)])
+ylabel('Assets', 'FontSize', 14)
+xticks(1:2:7)
+xticklabels(lgrid(1:2:7))
+xlabel('Labor Productivity','FontSize', 14)
+colormap(ax1,winter)
+exportgraphics(gcf,"..\v\hha_decision.png", 'Resolution',300)
+
+dat = gb(:,:,1);
+dat = dat(:);
+G1dat = [lrep arep dat];
+tiledlayout(1,1)
+graphdata = griddata(G1dat(:,1),G1dat(:,2), G1dat(:,3), xgrid, ygrid);
+ax1 = nexttile;
+mesh(graphdata);
+title('Household B Savings Choices', 'FontSize', 16)
+yticks(1:15:75)
+yticklabels([agrid(1:15:75)])
+ylabel('Assets', 'FontSize', 14)
+xticks(1:2:7)
+xticklabels(lgrid(1:2:7))
+xlabel('Labor Productivity','FontSize', 14)
+colormap(ax1,winter)
+
+dat = VOTESa;
+dat = dat(:);
+G1dat = [lrep arep dat];
+tiledlayout(1,1)
+graphdata = griddata(G1dat(:,1),G1dat(:,2), G1dat(:,3), xgrid, ygrid);
+ax1 = nexttile;
+contourf(graphdata);
+title('Household A Voting Choices', 'FontSize', 16)
+yticks(1:15:75)
+yticklabels([agrid(1:15:75)])
+ylabel('Assets', 'FontSize', 14)
+xticks(1:2:7)
+xticklabels(lgrid(1:2:7))
+xlabel('Labor Productivity','FontSize', 14)
+colormap(ax1,winter)
+
+dat = VOTESb;
+dat(1,1) = 1e-2;
+dat = dat(:);
+G1dat = [lrep arep dat];
+tiledlayout(1,1)
+graphdata = griddata(G1dat(:,1),G1dat(:,2), G1dat(:,3), xgrid, ygrid);
+ax1 = nexttile;
+contourf(graphdata);
+title('Household B Voting Choices', 'FontSize', 16)
+yticks(1:15:75)
+yticklabels([agrid(1:15:75)])
+ylabel('Assets', 'FontSize', 14)
+xticks(1:2:7)
+xticklabels(lgrid(1:2:7))
+xlabel('Labor Productivity','FontSize', 14)
+colormap(ax1,winter)
+
+%% now we do the stochastic responses 
+
+zt = [repelem(3, 100) 5 repelem(3, 1000)];
+params = [alpha beta delta sigma lagg];
+k0 = kval;
+[zt yt ct kt] = predict.perfectForesight(zt, kval, k0, .95, params, dTol);
