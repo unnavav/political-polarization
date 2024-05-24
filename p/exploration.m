@@ -16,15 +16,15 @@ addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
 % project
-delete(gcp('nocreate'));
-parpool('local',4);
-addAttachedFiles(gcp, "dependencies")
+% delete(gcp('nocreate'));
+% parpool('local',4);
+% addAttachedFiles(gcp, "dependencies")
 
 load handel
 
 vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 2; phi = 0; gamma = .5;
  
 nl = 7;
 na = 75;
@@ -41,7 +41,7 @@ wage = 1.1; r = 0.04;
 mu = 0;
 rho = .9554;
 sig_l = 0.5327;
-
+ 
 % need to back out sigma^2_e given sigma^2_l
 sigx = sig_l*sqrt(1 - rho^2);
 
@@ -60,7 +60,7 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 0;
-khmult = .;
+khmult = 1.2;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -125,25 +125,23 @@ while kDist > dTol
     % making tax schedule
     
     wage_inc = repmat(wage*lgrid,na,1)';
-    cap_inc = repmat(r*(agrid),nl,1);
-    Y = wage_inc+cap_inc;
+    cap_inc = repmat((1+r)*(agrid),nl,1);
     T = zeros(nl, na, np);
     for i = 1:np
-        T(:,:,i) = gov.tax(Y,lamval,tgrid(i));
+        T(:,:,i) = gov.tax(wage_inc,lamval,tgrid(i));
     end
 
     wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-    cap_inc_mu = repmat(r*amu, nl, 1);
-    Ymu = wage_inc_mu + cap_inc_mu;
+%     cap_inc_mu = repmat(r*amu, nl, 1);
     Tmu = zeros(nl, nmu, np);
     for ip = 1:np
-        Tmu(:,:,ip) = gov.tax(Ymu,lamval,tgrid(ip));
+        Tmu(:,:,ip) = gov.tax(wage_inc_mu,lamval,tgrid(ip));
     end
 
     G = [0 0];
     for ip = 1:np
         G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
-        Y(:,:,ip) = T(:,:,ip)+G(ip);
+        Y(:,:,ip) = T(:,:,ip) + G(ip) + cap_inc;
     end
 
     %prepare for VFI
@@ -212,7 +210,7 @@ sound(y, Fs)
 
 %%
 date = string(datetime("today"));
-filename = strcat("..\d\results_old_params",date);
+filename = strcat("..\d\results_wage_tax",date);
 save(filename)
 
 %% graphing
@@ -241,7 +239,7 @@ xticks(1:2:7)
 xticklabels(lgrid(1:2:7))
 xlabel('Labor Productivity','FontSize', 14)
 colormap(ax1,winter)
-exportgraphics(gcf,"..\v\hha_decision.png", 'Resolution',300)
+% exportgraphics(gcf,"..\v\hha_decision.png", 'Resolution',300)
 
 dat = gb(:,:,1);
 dat = dat(:);
@@ -291,10 +289,3 @@ xticks(1:2:7)
 xticklabels(lgrid(1:2:7))
 xlabel('Labor Productivity','FontSize', 14)
 colormap(ax1,winter)
-
-%% now we do the stochastic responses 
-
-zt = [repelem(3, 100) 5 repelem(3, 1000)];
-params = [alpha beta delta sigma lagg];
-k0 = kval;
-[zt yt ct kt] = predict.perfectForesight(zt, kval, k0, .95, params, dTol);
