@@ -13,8 +13,10 @@ classdef HH
             agrid = terms.agrid;
             pil = terms.pil;
             Y = terms.Y;
+            g = terms.G;
             p = terms.p;
             ubonus = terms.ubonus;
+            captax = terms.captax;
 
             Va = zeros(nl, na, np);
             EVa = Va;
@@ -63,7 +65,7 @@ classdef HH
                     Vap1 = Va(:,:, 1); Vap2 = Va(:,:, 2);
                     Vbp1 = Vb(:,:, 1); Vbp2 = Vb(:,:, 2);
                     prob = p(ip);
-                    parfor il = 1:nl
+                    for il = 1:nl
                         EVa(il, :, ip) = prob*pil(il,:)*Vap1 + ...
                             (1-prob)*pil(il,:)*Vap2;
                         EVb(il, :, ip) = prob*pil(il,:)*Vbp1 + ...
@@ -71,40 +73,123 @@ classdef HH
                     end
                 end
 
+                % commence EGM 😎😎
+
+                %step 1: get derivatives
+
+                DEVa = egm.numdev(EVa, agrid);
+                DEVb = egm.numdev(EVb, agrid);
+
+                %step 2: get endogenous grid
+                Ea = zeros(size(DEVa));
+                Eb = zeros(size(DEVa));
                 for il = 1:nl
                     for ip = 1:np
-                    EVa_l = EVa(il,:,ip);
-                    EVb_l = EVb(il,:,ip);
-                        parfor ia = 1:na
-                            y = Y(il, ia, ip);
-                                    
-                            if ip == 1
-                                params = [y beta sigma ubonus];    
-                                [res, aguess] = compute.gss(EVa_l, params, agrid, gTol);  
-                                Va(il, ia, ip) = res;
-                                ga(il, ia, ip) = aguess
-                                params = [y beta sigma 0];    
-                                [res, aguess] = compute.gss(EVb_l, params, agrid, gTol);  
-                                Vb(il, ia, ip) = res;
-                                gb(il, ia, ip) = aguess;
+                        prob = p(ip);
+                        for ia = 1:na
+                            deva = prob*DEVa(il, ia, 1) + (1-prob)*DEVa(il, ia, 2);
+                            devb = prob*DEVb(il, ia, 1) + (1-prob)*DEVb(il, ia, 2);
+                            apr = agrid(ia);
+                            if sigma == 1
+                                ca = exp(beta*deva);
+                                cb = exp(beta*devb);
                             else
-                                params = [y beta sigma 0];    
-                                [res, aguess] = compute.gss(EVa_l, params, agrid, gTol);  
-                                Va(il, ia, ip) = res;
-                                ga(il, ia, ip) = aguess
-                                params = [y beta sigma ubonus];    
-                                [res, aguess] = compute.gss(EVb_l, params, agrid, gTol);  
-                                Vb(il, ia, ip) = res;
-                                gb(il, ia, ip) = aguess;
+                                cb = (beta*deva)^(-sigma);
+                                ca = (beta*devb)^(-sigma);
+                            end
+
+                            Ea(il, ia, ip) = (ca + apr - Y(il, ia, ip) - ...
+                                g(ip))/(1+r*(1-captax)); 
+                            Eb(il, ia, ip) = (cb + apr - Y(il, ia, ip) - ...
+                                g(ip))/(1+r*(1-captax)); 
+                        end
+                    end
+                end
+
+                %step 3: back out normal vals
+                for il = 1:nl
+                    for ip = 1:np
+                        lb_a = min(Ea(il, :, ip));
+                        lb_b = min(Ea(il, :, ip));
+
+                        for ia = 1:na
+                            ahat = agrid(ia);
+            
+                            if ahat < lb_a
+                                ga(il, ia, ip) = 0;
+                            else
+                                [ix, we] = compute.weight(Ea(il, :, ip),ahat);
+                                ga(il, ia, ip) = we*Ea(il, ix, ip) + (1-we)*Ea(il, ix+1, ip);
+                            end
+
+                            if ahat < lb_b
+                                gb(il, ia, ip) = 0;
+                            else
+                                [ix, we] = compute.weight(Eb(il, :, ip), ahat);
+                                gb(il, ia, ip) = we*Eb(il, ix, ip) + (1-we)*Eb(il, ix+1, ip);
+                            end
+            
+                            c_a = (1+r)*ahat + Y(il, ia, ip) + g(ip) - r*phi - ga(il, ia, ip);
+                            c_b = (1+r)*ahat + Y(il, ia, ip) + g(ip) - r*phi - gb(il, ia, ip);
+            
+                            if (c_a < 0 || c_b < 0)
+                                disp([il ia ip])
+                                return
+                            end
+
+                            if ip == 1
+                                bonusa = ubonus;
+                                bonusb = 0;
+                            end
+
+                            if sigma == 1
+                                Va(il, ia, ip) = log(c_a) + bonusa + beta*EVa(il, ia, ip);
+                                Vb(il, ia, ip) = log(c_b) + bonusb + beta*EVb(il, ia, ip);
+                            else
+                                Va(il, ia, ip) = (c_a^(1-sigma))/(1-sigma) + ...
+                                    bonusa + beta*EVa(il, ia, ip);
+                                Vb(il, ia, ip) = (c_b^(1-sigma))/(1-sigma) + ...
+                                    bonusb + beta*EVb(il, ia, ip);
                             end
                         end
                     end
                 end
+                 
+
+%                 for il = 1:nl
+%                     for ip = 1:np
+%                     EVa_l = EVa(il,:,ip);
+%                     EVb_l = EVb(il,:,ip);
+%                         parfor ia = 1:na
+%                             y = Y(il, ia, ip);
+%                                     
+%                             if ip == 1
+%                                 params = [y beta sigma ubonus];    
+%                                 [res, aguess] = compute.gss(EVa_l, params, agrid, gTol);  
+%                                 Va(il, ia, ip) = res;
+%                                 ga(il, ia, ip) = aguess
+%                                 params = [y beta sigma 0];    
+%                                 [res, aguess] = compute.gss(EVb_l, params, agrid, gTol);  
+%                                 Vb(il, ia, ip) = res;
+%                                 gb(il, ia, ip) = aguess;
+%                             else
+%                                 params = [y beta sigma 0];    
+%                                 [res, aguess] = compute.gss(EVa_l, params, agrid, gTol);  
+%                                 Va(il, ia, ip) = res;
+%                                 ga(il, ia, ip) = aguess
+%                                 params = [y beta sigma ubonus];    
+%                                 [res, aguess] = compute.gss(EVb_l, params, agrid, gTol);  
+%                                 Vb(il, ia, ip) = res;
+%                                 gb(il, ia, ip) = aguess;
+%                             end
+%                         end
+%                     end
+%                 end
                 
                 dist = max(compute.dist(Va, V1a, 3), ...
                     compute.dist(Vb, V1b, 3));
             
-                if mod(iter_ct, 10) == 0
+                if mod(iter_ct, 100) == 0
                     fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
                 end
             
@@ -118,12 +203,14 @@ classdef HH
 
         end
 
-        function [mu1, Kagg] = getDist(ga, gb, amu, agrid, pil, pctA)
+        function [mu1A, KaggA, mu1B, KaggB] = getDist(ga, gb, amu, agrid, pil, pctA)
 
             [nl, ~, np] = size(ga);
             nmu = max(size(amu));
-            mu = zeros(nl, nmu, np); 
-            ixagrid = mu; weagrid = mu; ixbgrid = mu; webgrid = mu;
+            muA = zeros(nl, nmu);
+            muB = zeros(nl, nmu);
+            ixagrid = zeros(size(ga)); weagrid = ixagrid; 
+            ixbgrid = ixagrid; webgrid = ixagrid;
            
             for im = 1:nmu
                 kval = amu(im);
@@ -150,73 +237,122 @@ classdef HH
             
             distance = 20; iter_ct = 1;
             
-            for i = 1:nmu
+            for im = 1:nmu
                 for il = 1:nl
                     for ip = 1:np
-                        mu(il,i, ip) = 1.0/(nmu*nl*np);
+                        muA(il,im) = 1.0/(nmu*nl);
+                        muB(il,im) = 1.0/(nmu*nl);
                     end
                 end
             end
 
-            while (distance > 1e-8 && iter_ct < 3000)
+            while (distance > 1e-6 && iter_ct < 3000)
                 
-                mu1 = zeros(size(mu));
+                mu1A = zeros(size(muA));
+                mu1B = zeros(size(muB));
                 
                 for im = 1:nmu
                     for il = 1:nl
-                        for ip = 1:np
+                        ip = 1;
 
-                            ixa = ixagrid(il,im, ip); wea = weagrid(il,im, ip); 
-                            ixb = ixbgrid(il,im, ip); web = webgrid(il,im, ip); 
-                            muval = mu(il, im, ip);
-                            
-                            if muval > 0
-                                for jl = 1:nl
-                                    if (ixa < nmu)
-                                        mu1(jl,ixa, ip) = mu1(jl,ixa, ip) + ...
-                                            pctA*pil(il,jl)*muval*we;
-                                        mu1(jl,ixa+1, ip) = mu1(jl,ixa+1, ip) + ...
-                                            pctA*pil(il,jl)*muval*(1.0 - we);
-                                    else
-                                        mu1(jl,ixa, ip) = mu1(jl,ixa,ip) + ...
-                                            pctA*pil(il,jl)*muval*we;
-                                    end
-                                    
-                                    if (ixb < nmu)
-                                        mu1(jl,ixb, ip) = mu1(jl,ixb, ip) + ...
-                                            (1-pctA)*pil(il,jl)*muval*we;
-                                        mu1(jl,ixb+1, ip) = mu1(jl,ixb+1, ip) + ...
-                                            (1-pctA)*pil(il,jl)*muval*(1.0 - we);
-                                    else
-                                        mu1(jl,ixb, ip) = mu1(jl,ixb,ip) + ...
-                                            (1-pctA)*pil(il,jl)*muval*we;
-                                    end
+                        ixa = ixagrid(il,im, ip); wea = weagrid(il,im, ip); 
+                        ixb = ixbgrid(il,im, ip); web = webgrid(il,im, ip); 
+                        muvalA = muA(il, im); 
+                        
+                        %first do A distr
+                        if muvalA > 0
+                            for jl = 1:nl
+                                %a households' movements
+                                if (ixa < nmu)
+                                    mu1A(jl,ixa) = mu1A(jl,ixa) + ...
+                                        pctA*pil(il,jl)*muvalA*wea;
+                                    mu1A(jl,ixa+1) = mu1A(jl,ixa+1) + ...
+                                        pctA*pil(il,jl)*muvalA*(1.0 - wea);
+
+                                else
+                                    mu1A(jl,ixa) = mu1(jl,ixa) + ...
+                                        pctA*pil(il,jl)*muvalA;
+                                    mu1A(jl,ixa) = mu1(jl,ixa) + ...
+                                        pctA*pil(il,jl)*muvalA;
+                                end
+                                
+                                %b households' movements
+                                if (ixb < nmu)
+                                    mu1A(jl,ixb) = mu1A(jl,ixb) + ...
+                                        (1-pctA)*pil(il,jl)*muvalA*web;
+                                    mu1A(jl,ixb+1) = mu1A(jl,ixb+1) + ...
+                                        (1-pctA)*pil(il,jl)*muvalA*(1.0 - web);
+                                else
+                                    mu1A(jl,ixb) = mu1A(jl,ixb) + ...
+                                        (1-pctA)*pil(il,jl)*muvalA;
                                 end
                             end
-
                         end
+
+                        % now B distr
+                        ip = 2;
+                        ixa = ixagrid(il,im, ip); wea = weagrid(il,im, ip); 
+                        ixb = ixbgrid(il,im, ip); web = webgrid(il,im, ip);
+                        muvalB = muB(il, im);
+
+                        if muvalB > 0
+                            for jl = 1:nl
+                                % a HH movements for B in power
+                                if (ixa < nmu)
+                                    mu1B(jl,ixa) = mu1B(jl,ixa) + ...
+                                        pctA*pil(il,jl)*muvalB*wea;
+                                    mu1B(jl,ixa+1) = mu1B(jl,ixa+1) + ...
+                                        pctA*pil(il,jl)*muvalB*(1.0 - wea);
+                                else
+                                    mu1B(jl,ixa) = mu1B(jl,ixa) + ...
+                                        pctA*pil(il,jl)*muvalB;
+                                    mu1B(jl,ixa) = mu1B(jl,ixa) + ...
+                                        pctA*pil(il,jl)*muvalB;
+                                end
+                                
+                                if (ixb < nmu)
+                                    mu1B(jl,ixb) = mu1B(jl,ixb) + ...
+                                        (1-pctA)*pil(il,jl)*muvalB*web;
+                                    mu1B(jl,ixb+1) = mu1B(jl,ixb+1) + ...
+                                        pctA*pil(il,jl)*muvalB*(1.0 - web);
+                                else
+                                    mu1B(jl,ixb) = mu1B(jl,ixb) + ...
+                                        (1-pctA)*pil(il,jl)*muvalB*we;
+                                end
+                            end
+                        end
+
                     end
                 end
                                 
-                distance = compute.dist(mu1, mu, 3);
+                distanceA = compute.dist(mu1A, muA, 3);
+                distanceB = compute.dist(mu1B, muB, 3);
+
+                if (mod(iter_ct,200) == 0)
+                    s = sprintf( '\n\t\tIteration %3i: ||Tma - ma|| = %8.6f\tsum = %6.4f ', ...
+                        iter_ct, distanceA, sum(sum(mu1A)));
+                    disp(s);
+                    s = sprintf( '\n\t\tIteration %3i: ||Tmb - mb|| = %8.6f\tsum = %6.4f ', ...
+                        iter_ct, distanceB, sum(sum(mu1B)));
+                    disp(s);
+                end
                 
-%                 if (mod(iter_ct,200) == 0)
-%                     s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-%                         iter_ct, distance, sum(sum(mu1)));
-%                     disp(s);
-%                 end
-                
+                distance = max(distanceA, distanceB);
+
                 iter_ct = iter_ct + 1;
             
-                mu = mu1;   
+                muA = mu1A;   
+                muB = mu1B;   
             end
             s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-                iter_ct, distance, sum(sum(sum(mu))));
+                iter_ct, distance, sum(sum(muA)));
             disp(s);
 
-            distr2500 = sum(sum(mu,3),1);
-            Kagg = amu*distr2500';
+            distrA2500 = sum(muA,1);
+            KaggA = amu*distrA2500';
 
+            distrB2500 = sum(muB,1);
+            KaggB = amu*distrB2500';
         end
 
 

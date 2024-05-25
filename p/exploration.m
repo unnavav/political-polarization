@@ -16,9 +16,6 @@ addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
 % project
-% delete(gcp('nocreate'));
-% parpool('local',4);
-% addAttachedFiles(gcp, "dependencies")
 
 load handel
 
@@ -26,8 +23,8 @@ vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 2; phi = 0; gamma = .5;
  
-nl = 7;
-na = 75;
+nl = 5;
+na = 250;
 nmu = na*10;
 np = 2;
 
@@ -60,7 +57,7 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 0;
-khmult = 1.2;
+khmult = 10;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -88,6 +85,8 @@ p = [.3 .15];
 
 ubonus = .005;
 pctA = .5;
+
+captax = .15; %from US tax code
 
 %% solving for wages and r by getting aggregate capital
 
@@ -156,12 +155,13 @@ while kDist > dTol
         'Y', Y, ...
         'G', G, ...
         'p', p, ...
-        'ubonus',ubonus);
+        'ubonus',ubonus, ...
+        'captax', captax);
 
     [Va, Vb, EVa, EVb, ga, gb] = HH.solve(nl, na, np, terms, vTol, gTol);
 
-    VOTESa = (EVa(:,:,2) > EVa(:,:,1));
-    VOTESb = (EVb(:,:,2) > EVb(:,:,1));
+    VOTESa = (EVa(:,:,1) > EVa(:,:,2));
+    VOTESb = (EVb(:,:,1) > EVb(:,:,2));
 
     test = EVa(:,:,1) - EVb(:,:,1);
 
@@ -179,18 +179,22 @@ while kDist > dTol
 
         % asset distr
     fprintf("\tSolving asset distribution:\n")
-    [adistr, kagg] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
+    [adistrA, kaggA, adistrB, kaggB] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
 
     % CONDENSE DISTR
-    acond = compute.condense(adistr, amu, agrid);
+    acondA = compute.condense(adistrA, amu, agrid);
+    acondB = compute.condense(adistrB, amu, agrid);
 
-    for ip = 1:np
-        share2 = pctA*sum(sum(VOTESa.*acond(:,:,ip))) + ...
-            (1-pctA)*sum(sum(VOTESb.*acond(:,:,ip)));
-        p(ip) = exp(share2/gamma)/(exp(share2/gamma) + exp((1-share2)/gamma));
-    end
+    share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
+        (1-pctA)*sum(sum(VOTESb.*acondA));
+    share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
+        (1-pctA)*sum(sum(VOTESb.*acondB));
+    p(1) = share2A;
+    p(2) = share2B;
 
-    f = kagg - kval;
+    % 
+    f = kaggA - kval;
+%     f = kaggB - kval;
 
     if f > 0
         fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
@@ -210,7 +214,7 @@ sound(y, Fs)
 
 %%
 date = string(datetime("today"));
-filename = strcat("..\d\results_wage_tax",date);
+filename = strcat("..\d\results_wage_tax_EGM",date);
 save(filename)
 
 %% graphing
