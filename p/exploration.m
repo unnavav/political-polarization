@@ -75,11 +75,11 @@ tau = 0.181; %heathcote et al 2017
 
 % lambda upper lower bounds
 ll = 0; lh = 1;
-lamval = .01; % people are really reactive to taxes
+lamval = (lh + ll)/2; % people are really reactive to taxes
 adj = .5;
 
 %party tax regimes
-tgrid = [.45 .5]; 
+tgrid = [.086 .181]; 
 
 p = [.3 .15];
 
@@ -87,6 +87,7 @@ ubonus = .005;
 pctA = .5;
 
 captax = .15; %from US tax code
+goal = .3652;
 
 %% solving for wages and r by getting aggregate capital
 
@@ -109,107 +110,138 @@ kval = (kl+ kh)/2;
 DIST = max(kDist,gDist);
 
 VOTES = zeros(na, nl);
-
-while kDist > dTol
-
-    fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
-    fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
-    fprintf("\t Solving value function:\n")
-
-    p = [.3 .7];
-
-    r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
-    wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
-
-    % making tax schedule
     
-    wage_inc = repmat(wage*lgrid,na,1)';
-    cap_inc = repmat((1+r)*(agrid),nl,1);
-    T = zeros(nl, na, np);
-    for i = 1:np
-        T(:,:,i) = gov.tax(wage_inc,lamval,tgrid(i));
-    end
+while DIST > dTol
 
-    wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-%     cap_inc_mu = repmat(r*amu, nl, 1);
-    Tmu = zeros(nl, nmu, np);
-    for ip = 1:np
-        Tmu(:,:,ip) = gov.tax(wage_inc_mu,lamval,tgrid(ip));
-    end
+    fprintf("\n\n\n--------------------------------- > Lambda = %4.4f", lamval)
 
-    G = [0 0];
-    for ip = 1:np
-        G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
-        Y(:,:,ip) = T(:,:,ip) + G(ip) + cap_inc;
-    end
-
-    %prepare for VFI
-    terms = struct('beta', beta, ...
-        'sigma', sigma, ...
-        'phi', phi, ...
-        'r', r, ...
-        'wage', wage, ...
-        'agrid', agrid, ...
-        'lgrid', lgrid, ...
-        'pil', pil, ...
-        'Y', Y, ...
-        'G', G, ...
-        'p', p, ...
-        'ubonus',ubonus, ...
-        'captax', captax);
-
-    [Va, Vb, EVa, EVb, ga, gb] = HH.solve(nl, na, np, terms, vTol, gTol);
-
-    VOTESa = (EVa(:,:,1) > EVa(:,:,2));
-    VOTESb = (EVb(:,:,1) > EVb(:,:,2));
-
-    test = EVa(:,:,1) - EVb(:,:,1);
-
-    tiledlayout(5,1)
-    nexttile
-    mesh(ga(:,:,1)-ga(:,:,2));
-    nexttile
-    mesh(gb(:,:,1)-gb(:,:,2));
-    nexttile
-    mesh(ga(:,:,1) - gb(:,:,1));
-    nexttile
-    mesh(VOTESa - VOTESb);
-    nexttile
-    mesh(EVb(:,:,2) - EVb(:,:,1))
-
-        % asset distr
-    fprintf("\tSolving asset distribution:\n")
-    [adistrA, kaggA, adistrB, kaggB] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
-
-    % CONDENSE DISTR
-    acondA = compute.condense(adistrA, amu, agrid);
-    acondB = compute.condense(adistrB, amu, agrid);
-
-    share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
-        (1-pctA)*sum(sum(VOTESb.*acondA));
-    share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
-        (1-pctA)*sum(sum(VOTESb.*acondB));
-    p(1) = share2A;
-    p(2) = share2B;
-
-    % 
-    f = kaggA - kval;
-%     f = kaggB - kval;
-
-    if f > 0
-        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
-        kl = .5*(kval+kl);
-    else
-        fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.", abs(f))
-        kh = .5*(kval+kh);
-    end
-
-    kval = .5*(kl + kh);
-
-    kDist = abs(f);  % check whether the capital diff
+    while kDist > dTol
+    
+        fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
+        fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
+        fprintf("\t Solving value function:\n")
+    
+        p = [.3 .7];
+    
+        r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
+        wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
+    
+        % making tax schedule
+        
+        wage_inc = repmat(wage*lgrid,na,1)';
+        cap_inc = repmat((1+r)*(agrid),nl,1);
+        T = zeros(nl, na, np);
+        for i = 1:np
+            T(:,:,i) = gov.tax(wage_inc,lamval,tgrid(i));
+        end
+    
+        wage_inc_mu = repmat(wage*lgrid, nmu,1)';
+    %     cap_inc_mu = repmat(r*amu, nl, 1);
+        Tmu = zeros(nl, nmu, np);
+        for ip = 1:np
+            Tmu(:,:,ip) = gov.tax(wage_inc_mu,lamval,tgrid(ip));
+        end
+    
+        G = [0 0];
+        for ip = 1:np
+            G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
+            Y(:,:,ip) = T(:,:,ip) + G(ip) + cap_inc;
+        end
+    
+        %prepare for VFI
+        terms = struct('beta', beta, ...
+            'sigma', sigma, ...
+            'phi', phi, ...
+            'r', r, ...
+            'wage', wage, ...
+            'agrid', agrid, ...
+            'lgrid', lgrid, ...
+            'pil', pil, ...
+            'Y', Y, ...
+            'G', G, ...
+            'p', p, ...
+            'ubonus',ubonus, ...
+            'captax', captax);
+    
+        [Va, Vb, EVa, EVb, ga, gb] = HH.solve(nl, na, np, terms, vTol, gTol);
+    
+        VOTESa = (EVa(:,:,1) > EVa(:,:,2));
+        VOTESb = (EVb(:,:,1) > EVb(:,:,2));
+    
+        test = EVa(:,:,1) - EVb(:,:,1);
+    
+        tiledlayout(5,1)
+        nexttile
+        mesh(ga(:,:,1)-ga(:,:,2));
+        nexttile
+        mesh(gb(:,:,1)-gb(:,:,2));
+        nexttile
+        mesh(ga(:,:,1) - gb(:,:,1));
+        nexttile
+        mesh(VOTESa - VOTESb);
+        nexttile
+        mesh(EVb(:,:,2) - EVb(:,:,1))
+    
+            % asset distr
+        fprintf("\tSolving asset distribution:\n")
+        [adistrA, kaggA, adistrB, kaggB] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
+    
+        % CONDENSE DISTR
+        acondA = compute.condense(adistrA, amu, agrid);
+        acondB = compute.condense(adistrB, amu, agrid);
+    
+        share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
+            (1-pctA)*sum(sum(VOTESb.*acondA));
+        share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
+            (1-pctA)*sum(sum(VOTESb.*acondB));
+        p(1) = share2A;
+        p(2) = share2B;
+    
+        % 
+        f = kaggA - kval;
+    %     f = kaggB - kval;
+    
+        if f > 0
+            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
+            kl = .5*(kval+kl);
+        else
+            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.", abs(f))
+            kh = .5*(kval+kh);
+        end
+    
+        kDist = abs(kaggA - kval);  % check whether the capital diff
                                     % is changing at all
-end
     
+        kval = .5*(kl + kh);
+    end
+    
+    tA = adistrA.*Tmu(:,:,1); %getting all taxes collected
+    tA = sum(tA);
+    tB = adistrB.*Tmu(:,:,2); %getting all taxes collected
+    tB = sum(tB);
+
+    taxdist = sum(tA-goal);
+
+    if taxdist>goal
+       fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
+           "\tTax rate is too high.\n\n", taxdist, lamval)
+       lh = (lamval*adj+(1-adj)*lh);
+    else
+       fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
+           "\tTax rate is too low.\n\n", taxdist, lamval);
+       ll = (lamval*adj+(1-adj)*ll);
+    end
+
+    gDist = abs(taxdist);
+    lamval = .5*(ll + lh);
+
+    DIST = max(kDist, gDist);
+    fprintf("||DIST|| = %4.4f\n", DIST)
+    kl = klwrbnd*klmult;
+    kh = klwrbnd*khmult;
+    kDist = 10;
+end
+
 sound(y, Fs)
 
 %%
@@ -219,10 +251,6 @@ save(filename)
 
 %% graphing
 [xgrid, ygrid] = meshgrid(lgrid,agrid);
-
-
-
-set(gca, 'XTick', [agrid(1) agrid(30:15:75)], 'XTickLabels', xlab)
 
 lrep = repmat(lgrid,1,na)';
 arep = repmat(agrid,nl,1);

@@ -28,7 +28,7 @@ classdef HH
             V1b = Vb;
 
             for il = 1:nl
-                parfor ia = 1:na
+                for ia = 1:na
                     for ip = 1:np
                 
                         max_cons = Y(il, ia, ip);
@@ -140,6 +140,9 @@ classdef HH
                             if ip == 1
                                 bonusa = ubonus;
                                 bonusb = 0;
+                            else
+                                bonusa = 0;
+                                bonusb = ubonus;
                             end
 
                             if sigma == 1
