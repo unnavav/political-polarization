@@ -57,7 +57,7 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = 0;
-khmult = 10;
+khmult = 1.2;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -79,9 +79,10 @@ lamval = (lh + ll)/2; % people are really reactive to taxes
 adj = .5;
 
 %party tax regimes
+% tgrid = [1-.181 1-.086]; 
 tgrid = [.086 .181]; 
 
-p = [.3 .15];
+p = [1 0];
 
 ubonus = .005;
 pctA = .5;
@@ -91,13 +92,13 @@ goal = .3652;
 
 %% solving for wages and r by getting aggregate capital
 
-adistr = zeros(nl, nmu, np);
+adistrA = zeros(nl, nmu);
+adistrB = zeros(nl, nmu);
 
-for i = 1:nmu
+for i = 1:(nmu/2)
     for il = 1:nl
-        for ip = 1:np
-            adistr(il,i, ip) = 1.0/(nmu*nl*np);
-        end
+            adistrA(il,i) = 1.0/(nmu*nl/2);
+            adistrB(il,i) = 1.0/(nmu*nl/2);
     end
 end
 
@@ -120,16 +121,14 @@ while DIST > dTol
         fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
         fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
         fprintf("\t Solving value function:\n")
-    
-        p = [.3 .7];
-    
+        
         r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
         wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
     
         % making tax schedule
         
         wage_inc = repmat(wage*lgrid,na,1)';
-        cap_inc = repmat((1+r)*(agrid),nl,1);
+%         cap_inc = repmat((1+r)*(agrid),nl,1);
         T = zeros(nl, na, np);
         for i = 1:np
             T(:,:,i) = gov.tax(wage_inc,lamval,tgrid(i));
@@ -143,9 +142,11 @@ while DIST > dTol
         end
     
         G = [0 0];
+        adistr(:,:,1) = adistrA;
+        adistr(:,:,2) = adistrB;
         for ip = 1:np
             G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
-            Y(:,:,ip) = T(:,:,ip) + G(ip) + cap_inc;
+            Y(:,:,ip) = T(:,:,ip) + G(ip);
         end
     
         %prepare for VFI
@@ -186,17 +187,17 @@ while DIST > dTol
         fprintf("\tSolving asset distribution:\n")
         [adistrA, kaggA, adistrB, kaggB] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
     
-        % CONDENSE DISTR
-        acondA = compute.condense(adistrA, amu, agrid);
-        acondB = compute.condense(adistrB, amu, agrid);
-    
-        share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
-            (1-pctA)*sum(sum(VOTESb.*acondA));
-        share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
-            (1-pctA)*sum(sum(VOTESb.*acondB));
-        p(1) = share2A;
-        p(2) = share2B;
-    
+%         % CONDENSE DISTR
+%         acondA = compute.condense(adistrA, amu, agrid);
+%         acondB = compute.condense(adistrB, amu, agrid);
+%     
+%         share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
+%             (1-pctA)*sum(sum(VOTESb.*acondA));
+%         share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
+%             (1-pctA)*sum(sum(VOTESb.*acondB));
+%         p(1) = share2A;
+%         p(2) = share2B;
+%     
         % 
         f = kaggA - kval;
     %     f = kaggB - kval;

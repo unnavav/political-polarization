@@ -31,7 +31,7 @@ classdef HH
                 for ia = 1:na
                     for ip = 1:np
                 
-                        max_cons = Y(il, ia, ip);
+                        max_cons = Y(il, ia, ip) + (1+r)*agrid(ia);
                          
                         if ip == 1
                             if sigma == 1
@@ -87,16 +87,12 @@ classdef HH
                     for ip = 1:np
                         prob = p(ip);
                         for ia = 1:na
-                            deva = prob*DEVa(il, ia, 1) + (1-prob)*DEVa(il, ia, 2);
-                            devb = prob*DEVb(il, ia, 1) + (1-prob)*DEVb(il, ia, 2);
+                            deva = DEVa(il, ia, ip);
+                            devb = DEVb(il, ia, ip);
                             apr = agrid(ia);
-                            if sigma == 1
-                                ca = exp(beta*deva);
-                                cb = exp(beta*devb);
-                            else
-                                cb = (beta*deva)^(-sigma);
-                                ca = (beta*devb)^(-sigma);
-                            end
+
+                            cb = (beta*deva)^(-sigma);
+                            ca = (beta*devb)^(-sigma);
 
                             Ea(il, ia, ip) = (ca + apr - Y(il, ia, ip) - ...
                                 g(ip))/(1+r*(1-captax)); 
@@ -106,11 +102,11 @@ classdef HH
                     end
                 end
 
-                %step 3: back out normal vals
+                %step 3: back out decision rules
                 for il = 1:nl
                     for ip = 1:np
                         lb_a = min(Ea(il, :, ip));
-                        lb_b = min(Ea(il, :, ip));
+                        lb_b = min(Eb(il, :, ip));
 
                         for ia = 1:na
                             ahat = agrid(ia);
@@ -119,21 +115,32 @@ classdef HH
                                 ga(il, ia, ip) = 0;
                             else
                                 [ix, we] = compute.weight(Ea(il, :, ip),ahat);
-                                ga(il, ia, ip) = we*Ea(il, ix, ip) + (1-we)*Ea(il, ix+1, ip);
+                                ga(il, ia, ip) = we*agrid(ix) + (1-we)*agrid(ix+1);
                             end
 
                             if ahat < lb_b
                                 gb(il, ia, ip) = 0;
                             else
                                 [ix, we] = compute.weight(Eb(il, :, ip), ahat);
-                                gb(il, ia, ip) = we*Eb(il, ix, ip) + (1-we)*Eb(il, ix+1, ip);
+                                gb(il, ia, ip) = we*agrid(ix) + (1-we)*agrid(ix+1);
                             end
-            
-                            c_a = (1+r)*ahat + Y(il, ia, ip) + g(ip) - r*phi - ga(il, ia, ip);
-                            c_b = (1+r)*ahat + Y(il, ia, ip) + g(ip) - r*phi - gb(il, ia, ip);
+                        end
+                    end
+                end
+                 
+                % step 4: get value function
+                for il = 1:nl
+                    for ia = 1:na
+                        ahat = agrid(ia);
+                        for ip = 1:np
+                            c_a = (1+r*(1-captax))*ahat + Y(il, ia, ip) + g(ip) - ... 
+                                r*(1-captax)*phi - ga(il, ia, ip);
+                            c_b = (1+r*(1-captax))*ahat + Y(il, ia, ip) + g(ip) - ...
+                                r*(1-captax)*phi - gb(il, ia, ip);
             
                             if (c_a < 0 || c_b < 0)
                                 disp([il ia ip])
+                                fprintf("c_a = %4.4f, c_b = %4.4f", c_a, c_b);
                                 return
                             end
 
@@ -145,19 +152,24 @@ classdef HH
                                 bonusb = ubonus;
                             end
 
+                            [ix, we] = compute.weight(EVa(il,:,ip), ga(il, ia, ip));
+                            eva = we*EVa(il, ix, ip) + (1-we)*EVa(il, ix+1, ip);                            [ix, we] = compute.weight(EVa(il,:,ip), ga(il, ia, ip));
+                            [ix, we] = compute.weight(EVa(il,:,ip), gb(il, ia, ip));
+                            evb = we*EVb(il, ix, ip) + (1-we)*EVb(il, ix+1, ip);
+                            
                             if sigma == 1
-                                Va(il, ia, ip) = log(c_a) + bonusa + beta*EVa(il, ia, ip);
-                                Vb(il, ia, ip) = log(c_b) + bonusb + beta*EVb(il, ia, ip);
+
+                                Va(il, ia, ip) = log(c_a) + bonusa + beta*eva;
+                                Vb(il, ia, ip) = log(c_b) + bonusb + beta*evb;
                             else
                                 Va(il, ia, ip) = (c_a^(1-sigma))/(1-sigma) + ...
-                                    bonusa + beta*EVa(il, ia, ip);
+                                    bonusa + beta*eva;
                                 Vb(il, ia, ip) = (c_b^(1-sigma))/(1-sigma) + ...
-                                    bonusb + beta*EVb(il, ia, ip);
+                                    bonusb + beta*evb;
                             end
                         end
                     end
                 end
-                 
 
 %                 for il = 1:nl
 %                     for ip = 1:np
@@ -192,7 +204,7 @@ classdef HH
                 dist = max(compute.dist(Va, V1a, 3), ...
                     compute.dist(Vb, V1b, 3));
             
-                if mod(iter_ct, 100) == 0
+                if mod(iter_ct, 20) == 0
                     fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
                 end
             
@@ -200,6 +212,8 @@ classdef HH
             
                 V1a = Va;
                 V1b = Vb;
+                mesh(ga(:,:,1));
+                max(max(ga));
             end
         
             fprintf("\n\t\tIteration %i: ||TV - V|| = %4.7f\n", iter_ct, dist);
