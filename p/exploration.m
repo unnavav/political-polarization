@@ -21,9 +21,9 @@ load handel
 
 vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 2; phi = 0; gamma = .5;
+alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
  
-nl = 5;
+nl = 7;
 na = 250;
 nmu = na*10;
 np = 2;
@@ -56,8 +56,8 @@ rst = 1.0/beta - 1.0;
 klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
-klmult = 0;
-khmult = 1.2;
+klmult = .3;
+khmult = 1.5;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -69,9 +69,6 @@ agrid = compute.logspace(al, ah, na)';
 % make distribution grid
 
 amu = linspace(al, ah, nmu);
-
-% initial tau guess
-tau = 0.181; %heathcote et al 2017
 
 % lambda upper lower bounds
 ll = 0; lh = 1;
@@ -85,15 +82,22 @@ tgrid = [.086 .181];
 p = [1 0];
 
 ubonus = .005;
+
+ubonusA = [ubonus 0];
+ubonusB = [0 ubonus];
+
 pctA = .5;
 
 captax = .15; %from US tax code
 goal = .3652;
 
+G = [0 0];
+
 %% solving for wages and r by getting aggregate capital
 
 adistrA = zeros(nl, nmu);
 adistrB = zeros(nl, nmu);
+adistr = zeros(nl, nmu, np);
 
 for i = 1:(nmu/2)
     for il = 1:nl
@@ -101,6 +105,9 @@ for i = 1:(nmu/2)
             adistrB(il,i) = 1.0/(nmu*nl/2);
     end
 end
+
+adistr(:,:,1) = adistrA;
+adistr(:,:,2) = adistrB;
 
 kDist = 10;
 gDist = 10; 
@@ -122,33 +129,25 @@ while DIST > dTol
         fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
         fprintf("\t Solving value function:\n")
         
+        % first getting equilibrium objects like prices, govt spending, etc
         r = alpha*(kval^(alpha - 1)*(lagg^(1-alpha))) - delta;
         wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
-    
-        % making tax schedule
-        
-        wage_inc = repmat(wage*lgrid,na,1)';
-%         cap_inc = repmat((1+r)*(agrid),nl,1);
-        T = zeros(nl, na, np);
-        for i = 1:np
-            T(:,:,i) = gov.tax(wage_inc,lamval,tgrid(i));
-        end
-    
+
         wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-    %     cap_inc_mu = repmat(r*amu, nl, 1);
+        cap_inc_mu = repmat(r*amu, nl, 1);
         Tmu = zeros(nl, nmu, np);
         for ip = 1:np
-            Tmu(:,:,ip) = gov.tax(wage_inc_mu,lamval,tgrid(ip));
+            Tmu(:,:,ip) = gov.tax(wage_inc_mu,lamval,tgrid(ip)) + ...
+                cap_inc_mu.*(1-captax);
         end
-    
-        G = [0 0];
+
         adistr(:,:,1) = adistrA;
         adistr(:,:,2) = adistrB;
         for ip = 1:np
             G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
-            Y(:,:,ip) = T(:,:,ip) + G(ip);
         end
-    
+
+
         %prepare for VFI
         terms = struct('beta', beta, ...
             'sigma', sigma, ...
@@ -158,34 +157,58 @@ while DIST > dTol
             'agrid', agrid, ...
             'lgrid', lgrid, ...
             'pil', pil, ...
-            'Y', Y, ...
+            'lamval', lamval, ...
+            'tau', tgrid, ...
             'G', G, ...
             'p', p, ...
             'ubonus',ubonus, ...
             'captax', captax);
     
-        [Va, Vb, EVa, EVb, ga, gb] = HH.solve(nl, na, np, terms, vTol, gTol);
-    
+        fprintf("\t Solving value function for HH a:\n")
+        Va = zeros(nl, na, np);
+        Ga = Va;
+        EVa = Va;
+        for ip = 1:np
+            fprintf("\t\t Party %i:\n", ip)
+
+            terms.tau = tgrid(ip);
+            terms.G = G(ip);
+            terms.ubonus = ubonusA(ip);
+
+            [Vaip, Gaip, EVaip] = HH.solve(nl, na, np, terms, vTol, gTol);
+            Va(:,:,ip) = Vaip;
+            Ga(:,:,ip) = Gaip;
+            EVa(:,:,ip) = EVaip;
+        end
+
+        fprintf("\t Solving value function for HH b:\n")
+        Vb = zeros(nl, na, np);
+        Gb = Vb;
+        EVb = Vb;
+        for ip = 1:np
+            fprintf("\t\t Party %i:\n", ip)
+
+            terms.tau = tgrid(ip);
+            terms.G = G(ip);
+            terms.ubonus = ubonusB(ip);
+
+            [Vbip, Gbip, EVbip] = HH.solve(nl, na, np, terms, vTol, gTol);
+            Vb(:,:,ip) = Vbip;
+            Gb(:,:,ip) = Gbip;
+            EVb(:,:,ip) = EVbip;
+        end
+        
         VOTESa = (EVa(:,:,1) > EVa(:,:,2));
         VOTESb = (EVb(:,:,1) > EVb(:,:,2));
     
         test = EVa(:,:,1) - EVb(:,:,1);
     
-        tiledlayout(5,1)
-        nexttile
-        mesh(ga(:,:,1)-ga(:,:,2));
-        nexttile
-        mesh(gb(:,:,1)-gb(:,:,2));
-        nexttile
-        mesh(ga(:,:,1) - gb(:,:,1));
-        nexttile
-        mesh(VOTESa - VOTESb);
-        nexttile
-        mesh(EVb(:,:,2) - EVb(:,:,1))
-    
-            % asset distr
+        %TO DO: 
+        % SOLVE ASSET DISTRIBUTION 
+        % SOLVE VOTE COUNTS
+
         fprintf("\tSolving asset distribution:\n")
-        [adistrA, kaggA, adistrB, kaggB] = HH.getDist(ga, gb, amu, agrid, pil, pctA);
+        [adistrA, kaggA, adistrB, kaggB] = HH.getDist(Ga, Gb, amu, agrid, pil, pctA);
     
 %         % CONDENSE DISTR
 %         acondA = compute.condense(adistrA, amu, agrid);
@@ -203,10 +226,10 @@ while DIST > dTol
     %     f = kaggB - kval;
     
         if f > 0
-            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.", abs(f))
+            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.\n", abs(f))
             kl = .5*(kval+kl);
         else
-            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.", abs(f))
+            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.\n", abs(f))
             kh = .5*(kval+kh);
         end
     
@@ -220,6 +243,8 @@ while DIST > dTol
     tA = sum(tA);
     tB = adistrB.*Tmu(:,:,2); %getting all taxes collected
     tB = sum(tB);
+    Y = kval^(alpha)*lagg^(1-alpha);
+    gy = tA/Y;
 
     taxdist = sum(tA-goal);
 
