@@ -19,7 +19,7 @@ addpath(genpath(pwd));
 
 load handel
 
-vTol = 1e-6; gTol = 1e-8; dTol = 1e-4;
+vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
  
@@ -79,9 +79,9 @@ adj = 1/3;
 % tgrid = [1-.181 1-.086]; 
 tgrid = [.086 .181]; 
 
-p = [.5 .5];
+p = [1 0];
 
-ubonus = .025;
+ubonus = .1;
 
 ubonusA = [ubonus 0];
 ubonusB = [0 ubonus];
@@ -255,7 +255,7 @@ save(filename)
 lrep = repmat(lgrid,1,na)';
 arep = repmat(agrid,nl,1);
 arep = arep(:);
-dat = ga(:,:,1);
+dat = Ga(:,:,1);
 dat = dat(:);
 G1dat = [lrep arep dat];
 
@@ -264,8 +264,8 @@ graphdata = griddata(G1dat(:,1),G1dat(:,2), G1dat(:,3), xgrid, ygrid);
 ax1 = nexttile;
 mesh(graphdata);
 title('Household A Savings Choices', 'FontSize', 16)
-yticks(1:15:75)
-yticklabels([agrid(1:15:75)])
+yticks(1:50:251)
+yticklabels([agrid(1:50:250) agrid(250)])
 ylabel('Assets', 'FontSize', 14)
 xticks(1:2:7)
 xticklabels(lgrid(1:2:7))
