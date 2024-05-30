@@ -1,7 +1,13 @@
 classdef HH
     methods(Static)
 
-
+        %% solve the HH problem
+        % this function is used four times to solve the four different 
+        % HH x Party types : (a,A), (b,A), (a,B), (b,B). The things that
+        % change between combos:
+        %   - ubonus
+        %   - tau
+        %   - g
         function [V, G, V0] = solve(nl, na, np, terms, vTol, gTol)
 
             beta = terms.beta;
@@ -13,27 +19,38 @@ classdef HH
             agrid = terms.agrid;
             pil = terms.pil;
             g = terms.G;
-            p = terms.p;
             ubonus = terms.ubonus;
             captax = terms.captax;
             lamval = terms.lamval;
             tau = terms.tau;
+            p = terms.p;
             
-            V = zeros(nl, na);
-            V0 = V;
-            TV = V;
-            
+            V = zeros(nl, na, np);
             G = V;
-            TG = V;
+
+            VA = zeros(nl, na);
+            TVA = VA;
             
+            GA = VA;
+            TGA = VA;
+            
+            VB = zeros(nl, na);
+            TVB = VB;
+            
+            GB = VB;
+            TGB = VB;
+
+            V0 = zeros(nl, na);
+
             % set up V so that it doesn't start empty
-            scale = 0.025;
+            scale = .0025;
             for ia = 1:na
                 kval = agrid(ia);
                 for il = 1:nl
                     yval = scale*(1+r*(1-captax))*kval + w*lgrid(il) - r*phi;
                     ymin = max(1e-10, yval);
-                    V(il, ia) = log(ymin);
+                    VA(il, ia) = log(ymin);
+                    VB(il, ia) = log(ymin);
                 end
             end
             
@@ -45,20 +62,31 @@ classdef HH
             
                 for ia = 1:na
                     for il = 1:nl
-                        V0(il, ia) = pil(il,:)*V(:,ia);
+                        for ip = 1:np
+                            prob = p(ip);
+                            V0(il, ia, ip) = prob*pil(il,:)*VA(:,ia) + ...
+                                (1-prob)*pil(il,:)*VB(:,ia);
+                        end
                     end
                 end
             
                 %endogrid choice
-                endoK = zeros(size(V));
+                endoKA = zeros(size(VA));
+                endoKB = endoKA;
                 for ia = 1:na
                     kpr = agrid(ia);
-                    for il = 1:il
+                    for il = 1:nl
                         l = lgrid(il);
                         D = egm.solveD(V0(il,:), ia, agrid);
-                        endoK(il, ia) = ((beta*D)^(-1) + kpr - ...
-                            gov.tax(w*l, lamval, tau) - g + ...
+                        
+                        endoKA(il, ia) = ((beta*D)^(-1) + kpr - ...
+                            gov.tax(w*l, lamval, tau(1)) - g(1) + ...
                             r*(1-captax)*phi)/(1+r*(1-captax));
+
+                        endoKB(il, ia) = ((beta*D)^(-1) + kpr - ...
+                            gov.tax(w*l, lamval, tau(2)) - g(2) + ...
+                            r*(1-captax)*phi)/(1+r*(1-captax));
+
                     end
                 end
             
@@ -67,46 +95,74 @@ classdef HH
                 for ia = 1:na
                     k = agrid(ia);
                     for il = 1:nl
-                        lkvals = endoK(il, :);
+                        lkvals = endoKA(il, :);
+                        
                         if k < lkvals(1)
-                            G(il, ia) = agrid(1);
+                            GA(il, ia) = agrid(1);
                         else 
                             [ix, we] = compute.weight(lkvals, k);
                             kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
-                            G(il, ia) = max(agrid(1), kpr);
+                            GA(il, ia) = max(agrid(1), kpr);
                         end
+
+                        lkvals = endoKB(il, :);
+                        
+                        if k < lkvals(1)
+                            GB(il, ia) = agrid(1);
+                        else 
+                            [ix, we] = compute.weight(lkvals, k);
+                            kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
+                            GB(il, ia) = max(agrid(1), kpr);
+                        end
+
                     end
                 end
             
                 for ia = 1:na
                     for il = 1:nl
                         l = lgrid(il);
-                        c = (1+r*(1-captax))*agrid(ia) + gov.tax(w*l, lamval, tau) ...
-                            + g - G(il, ia) - r*(1-captax)*phi;
-                        [ix, we] = compute.weight(agrid, G(il, ia));
-                        ev = we*V0(il, ix) + (1-we)*V0(il, ix+1);
-                        TV(il, ia) = log(c) + beta*ev;
+
+                        %A in power
+                        c = (1+r*(1-captax))*agrid(ia) + gov.tax(w*l, lamval, tau(1)) ...
+                            + g(1) - GA(il, ia) - r*(1-captax)*phi;
+                        [ix, we] = compute.weight(agrid, GA(il, ia));
+                        ev = we*V0(il, ix,1) + (1-we)*V0(il, ix+1,1);
+                        TVA(il, ia) = log(c) + ubonus(1) + beta*ev;
+
+                        %B in power
+                        c = (1+r*(1-captax))*agrid(ia) + gov.tax(w*l, lamval, tau(2)) ...
+                            + g(2) - GB(il, ia) - r*(1-captax)*phi;
+                        [ix, we] = compute.weight(agrid, GB(il, ia));
+                        ev = we*V0(il, ix,2) + (1-we)*V0(il, ix+1,2);
+                        TVB(il, ia) = log(c) + ubonus(2) + beta*ev;
                     end
                 end
             
-                dist = compute.dist(TV, V, 2);
-                kdist = compute.dist(TG, G, 2);
+                dist = max(compute.dist(TVA, VA, 2), ...
+                    compute.dist(TVB, VB, 2));
+                kdist = max(compute.dist(TGA, GA, 2), ...
+                    compute.dist(TGB, GB, 2));
             
-                if mod(iter_ct, 200) == 0
-                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-                        "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
-                end
+%                 if mod(iter_ct, 10) == 0
+%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+%                 end
             
                 iter_ct = iter_ct + 1;
             
-                V = TV;
-                TG = G;
+                VA = TVA;
+                TGA = GA;
+
+                VB = TVB;
+                TGB = GB;
             end
 
         
             fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
                 "\n\t\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
 
+            V(:,:,1) = VA; V(:,:,2) = VB;
+            G(:,:,1) = GA; G(:,:,2) = GB;
         end
 
         % we have two types of heterogeniety: wealth and political agent
@@ -247,14 +303,14 @@ classdef HH
                 distanceA = compute.dist(mu1A, muA, 3);
                 distanceB = compute.dist(mu1B, muB, 3);
 
-                if (mod(iter_ct,50) == 0)
-                    s = sprintf( '\n\t\tIteration %3i: ||Tma - ma|| = %8.6f\tsum = %6.4f ', ...
-                        iter_ct, distanceA, sum(sum(mu1A)));
-                    disp(s);
-                    s = sprintf( '\n\t\t\t\t\t\t||Tmb - mb|| = %8.6f\tsum = %6.4f ', ...
-                        distanceB, sum(sum(mu1B)));
-                    disp(s);
-                end
+%                 if (mod(iter_ct,50) == 0)
+%                     s = sprintf( '\n\t\tIteration %3i: ||Tma - ma|| = %8.6f\tsum = %6.4f ', ...
+%                         iter_ct, distanceA, sum(sum(mu1A)));
+%                     disp(s);
+%                     s = sprintf( '\n\t\t\t\t\t\t||Tmb - mb|| = %8.6f\tsum = %6.4f ', ...
+%                         distanceB, sum(sum(mu1B)));
+%                     disp(s);
+%                 end
                 
                 distance = max(distanceA, distanceB);
 

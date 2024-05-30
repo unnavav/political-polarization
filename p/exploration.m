@@ -19,7 +19,7 @@ addpath(genpath(pwd));
 
 load handel
 
-vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
+vTol = 1e-6; gTol = 1e-8; dTol = 1e-4;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
  
@@ -73,22 +73,22 @@ amu = linspace(al, ah, nmu);
 % lambda upper lower bounds
 ll = 0; lh = 1;
 lamval = (lh + ll)/2; % people are really reactive to taxes
-adj = .5;
+adj = 1/3;
 
 %party tax regimes
 % tgrid = [1-.181 1-.086]; 
 tgrid = [.086 .181]; 
 
-p = [1 0];
+p = [.5 .5];
 
-ubonus = .005;
+ubonus = .025;
 
 ubonusA = [ubonus 0];
 ubonusB = [0 ubonus];
 
 pctA = .5;
 
-captax = .15; %from US tax code
+captax = .05; %arbitrary number for now
 goal = .3652;
 
 G = [0 0];
@@ -126,7 +126,7 @@ while DIST > dTol
     while kDist > dTol
     
         fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
-        fprintf("\nA guess: %4.4f. Begin iteration for solution...\n", kval)
+        fprintf("\nA guess: %4.8f. Begin iteration for solution...\n", kval)
         fprintf("\t Solving value function:\n")
         
         % first getting equilibrium objects like prices, govt spending, etc
@@ -158,46 +158,22 @@ while DIST > dTol
             'lgrid', lgrid, ...
             'pil', pil, ...
             'lamval', lamval, ...
+            'captax', captax, ...
             'tau', tgrid, ...
             'G', G, ...
-            'p', p, ...
-            'ubonus',ubonus, ...
-            'captax', captax);
+            'p', p);
     
-        fprintf("\t Solving value function for HH a:\n")
-        Va = zeros(nl, na, np);
-        Ga = Va;
-        EVa = Va;
-        for ip = 1:np
-            fprintf("\t\t Party %i:\n", ip)
+        fprintf("Solving value functions:\n")
 
-            terms.tau = tgrid(ip);
-            terms.G = G(ip);
-            terms.ubonus = ubonusA(ip);
-
-            [Vaip, Gaip, EVaip] = HH.solve(nl, na, np, terms, vTol, gTol);
-            Va(:,:,ip) = Vaip;
-            Ga(:,:,ip) = Gaip;
-            EVa(:,:,ip) = EVaip;
-        end
-
-        fprintf("\t Solving value function for HH b:\n")
-        Vb = zeros(nl, na, np);
-        Gb = Vb;
-        EVb = Vb;
-        for ip = 1:np
-            fprintf("\t\t Party %i:\n", ip)
-
-            terms.tau = tgrid(ip);
-            terms.G = G(ip);
-            terms.ubonus = ubonusB(ip);
-
-            [Vbip, Gbip, EVbip] = HH.solve(nl, na, np, terms, vTol, gTol);
-            Vb(:,:,ip) = Vbip;
-            Gb(:,:,ip) = Gbip;
-            EVb(:,:,ip) = EVbip;
-        end
+        fprintf("\tHH Type A:\n")
+        terms.ubonus = ubonusA;
+        [Va, Ga, EVa] = HH.solve(nl, na, np, terms, vTol, gTol);
+    
+        fprintf("\tHH Type B:\n")
+        terms.ubonus = ubonusB;
+        [Vb, Gb, EVb] = HH.solve(nl, na, np, terms, vTol, gTol);
         
+        mesh(EVa(:,:,1) - EVa(:,:,2))
         VOTESa = (EVa(:,:,1) > EVa(:,:,2));
         VOTESb = (EVb(:,:,1) > EVb(:,:,2));
     
@@ -226,11 +202,11 @@ while DIST > dTol
     %     f = kaggB - kval;
     
         if f > 0
-            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too low.\n", abs(f))
-            kl = .5*(kval+kl);
+            fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(f))
+            kl = (kval+2*kl)/3;
         else
-            fprintf("\n||Kguess - Kagg|| = %4.4f. \tAggregate capital is too high.\n", abs(f))
-            kh = .5*(kval+kh);
+            fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too high.\n", abs(f))
+            kh = (kval+2*kh)/3;
         end
     
         kDist = abs(kaggA - kval);  % check whether the capital diff
@@ -240,25 +216,23 @@ while DIST > dTol
     end
     
     tA = adistrA.*Tmu(:,:,1); %getting all taxes collected
-    tA = sum(tA);
+    tA = sum(sum(tA));
     tB = adistrB.*Tmu(:,:,2); %getting all taxes collected
-    tB = sum(tB);
+    tB = sum(sum(tB));
     Y = kval^(alpha)*lagg^(1-alpha);
     gy = tA/Y;
 
-    taxdist = sum(tA-goal);
-
-    if taxdist>goal
+    if gy<goal
        fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
-           "\tTax rate is too high.\n\n", taxdist, lamval)
+           "\tTax rate is too high.\n\n", gy, lamval)
        lh = (lamval*adj+(1-adj)*lh);
     else
        fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
-           "\tTax rate is too low.\n\n", taxdist, lamval);
+           "\tTax rate is too low.\n\n", gy, lamval);
        ll = (lamval*adj+(1-adj)*ll);
     end
 
-    gDist = abs(taxdist);
+    gDist = abs(gy-goal);
     lamval = .5*(ll + lh);
 
     DIST = max(kDist, gDist);
@@ -272,7 +246,7 @@ sound(y, Fs)
 
 %%
 date = string(datetime("today"));
-filename = strcat("..\d\results_wage_tax_EGM",date);
+filename = strcat("..\d\results_wage_tax_captax_05_EGM",date);
 save(filename)
 
 %% graphing
