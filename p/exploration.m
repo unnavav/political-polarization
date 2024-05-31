@@ -19,7 +19,7 @@ addpath(genpath(pwd));
 
 load handel
 
-vTol = 1e-5; gTol = 1e-8; dTol = 1e-3;
+vTol = 1e-5; dTol = 1e-3;
 %% params
 alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
  
@@ -28,7 +28,7 @@ na = 250;
 nmu = na*10;
 np = 2;
 
-al = 0+phi; ah = 100+phi;
+al = 0+phi; ah = 10+phi;
 
 wage = 1.1; r = 0.04;
 
@@ -88,8 +88,10 @@ ubonusB = [0 ubonus];
 
 pctA = .5;
 
-captax = .05; %arbitrary number for now
-goal = .3652;
+% captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
+% captax = compute.logspace(0, 20, nl)/100;
+captax = linspace(0, .20, nl);
+goal = .3652; % IMF
 
 G = [0 0];
 
@@ -134,11 +136,14 @@ while DIST > dTol
         wage = (1-alpha)*((kval^(alpha))*(lagg^(-alpha)));
 
         wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-        cap_inc_mu = repmat(r*amu, nl, 1);
+        cap_inc_mu = zeros(size(wage_inc_mu));
+        for il = 1:nl
+            cap_inc_mu(il, :) = repmat(r*amu, 1, 1)*(captax(il));
+        end
         Tmu = zeros(nl, nmu, np);
         for ip = 1:np
             Tmu(:,:,ip) = gov.tax(wage_inc_mu,lamval,tgrid(ip)) + ...
-                cap_inc_mu.*(1-captax);
+                cap_inc_mu;
         end
 
         adistr(:,:,1) = adistrA;
@@ -167,11 +172,11 @@ while DIST > dTol
 
         fprintf("\tHH Type A:\n")
         terms.ubonus = ubonusA;
-        [Va, Ga, EVa] = HH.solve(nl, na, np, terms, vTol, gTol);
+        [Va, Ga, EVa] = HH.solve(nl, na, np, terms, vTol);
     
         fprintf("\tHH Type B:\n")
         terms.ubonus = ubonusB;
-        [Vb, Gb, EVb] = HH.solve(nl, na, np, terms, vTol, gTol);
+        [Vb, Gb, EVb] = HH.solve(nl, na, np, terms, vTol);
         
         mesh(EVa(:,:,1) - EVa(:,:,2))
         VOTESa = (EVa(:,:,1) > EVa(:,:,2));
@@ -187,16 +192,16 @@ while DIST > dTol
         [adistrA, kaggA, adistrB, kaggB] = HH.getDist(Ga, Gb, amu, agrid, pil, pctA);
     
 %         % CONDENSE DISTR
-%         acondA = compute.condense(adistrA, amu, agrid);
-%         acondB = compute.condense(adistrB, amu, agrid);
-%     
-%         share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
-%             (1-pctA)*sum(sum(VOTESb.*acondA));
-%         share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
-%             (1-pctA)*sum(sum(VOTESb.*acondB));
-%         p(1) = share2A;
-%         p(2) = share2B;
-%     
+        acondA = compute.condense(adistrA, amu, agrid);
+        acondB = compute.condense(adistrB, amu, agrid);
+    
+        share2A = pctA*sum(sum(VOTESa.*acondA)) + ...
+            (1-pctA)*sum(sum(VOTESb.*acondA));
+        share2B = pctA*sum(sum(VOTESa.*acondB)) + ...
+            (1-pctA)*sum(sum(VOTESb.*acondB));
+%         p(1) = share2A > share2B;
+%         p(2) = share2A > share2B;
+
         % 
         f = kaggA - kval;
     %     f = kaggB - kval;
@@ -209,15 +214,13 @@ while DIST > dTol
             kh = (kval+2*kh)/3;
         end
     
-        kDist = abs(kaggA - kval);  % check whether the capital diff
-                                    % is changing at all
-    
+        kDist = abs(kaggA - kval);  
         kval = .5*(kl + kh);
     end
     
-    tA = adistrA.*Tmu(:,:,1); %getting all taxes collected
+    tA = adistrA.*Tmu(:,:,1); %getting all taxes collected in A govt
     tA = sum(sum(tA));
-    tB = adistrB.*Tmu(:,:,2); %getting all taxes collected
+    tB = adistrB.*Tmu(:,:,2); %getting all taxes collected in B govt
     tB = sum(sum(tB));
     Y = kval^(alpha)*lagg^(1-alpha);
     gy = tA/Y;
@@ -246,7 +249,7 @@ sound(y, Fs)
 
 %%
 date = string(datetime("today"));
-filename = strcat("..\d\results_wage_tax_captax_05_EGM",date);
+filename = strcat("..\d\results_new_kgrid_linspacecaptax_grid_EGM",date);
 save(filename)
 
 %% graphing

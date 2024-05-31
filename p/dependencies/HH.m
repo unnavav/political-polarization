@@ -8,7 +8,7 @@ classdef HH
         %   - ubonus
         %   - tau
         %   - g
-        function [V, G, V0] = solve(nl, na, np, terms, vTol, gTol)
+        function [V, G, V0] = solve(nl, na, np, terms, vTol)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -47,7 +47,7 @@ classdef HH
             for ia = 1:na
                 kval = agrid(ia);
                 for il = 1:nl
-                    yval = scale*(1+r*(1-captax))*kval + w*lgrid(il) - r*phi;
+                    yval = scale*(1+r*(1-captax(il)))*kval + w*lgrid(il) - r*phi;
                     ymin = max(1e-10, yval);
                     VA(il, ia) = log(ymin);
                     VB(il, ia) = log(ymin);
@@ -81,11 +81,11 @@ classdef HH
                         
                         endoKA(il, ia) = ((beta*D)^(-1) + kpr - ...
                             gov.tax(w*l, lamval, tau(1)) - g(1) + ...
-                            r*(1-captax)*phi)/(1+r*(1-captax));
+                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
 
                         endoKB(il, ia) = ((beta*D)^(-1) + kpr - ...
                             gov.tax(w*l, lamval, tau(2)) - g(2) + ...
-                            r*(1-captax)*phi)/(1+r*(1-captax));
+                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
 
                     end
                 end
@@ -123,15 +123,15 @@ classdef HH
                         l = lgrid(il);
 
                         %A in power
-                        c = (1+r*(1-captax))*agrid(ia) + gov.tax(w*l, lamval, tau(1)) ...
-                            + g(1) - GA(il, ia) - r*(1-captax)*phi;
+                        c = (1+r*(1-captax(il)))*agrid(ia) + gov.tax(w*l, lamval, tau(1)) ...
+                            + g(1) - GA(il, ia) - r*(1-captax(il))*phi;
                         [ix, we] = compute.weight(agrid, GA(il, ia));
                         ev = we*V0(il, ix,1) + (1-we)*V0(il, ix+1,1);
                         TVA(il, ia) = log(c) + ubonus(1) + beta*ev;
 
                         %B in power
-                        c = (1+r*(1-captax))*agrid(ia) + gov.tax(w*l, lamval, tau(2)) ...
-                            + g(2) - GB(il, ia) - r*(1-captax)*phi;
+                        c = (1+r*(1-captax(il)))*agrid(ia) + gov.tax(w*l, lamval, tau(2)) ...
+                            + g(2) - GB(il, ia) - r*(1-captax(il))*phi;
                         [ix, we] = compute.weight(agrid, GB(il, ia));
                         ev = we*V0(il, ix,2) + (1-we)*V0(il, ix+1,2);
                         TVB(il, ia) = log(c) + ubonus(2) + beta*ev;
