@@ -21,7 +21,7 @@ load handel
 
 vTol = 1e-5; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.08; beta = 0.96173; sigma = 1; phi = 0; gamma = .5;
+alpha = 0.36; delta = 0.01; beta = 0.96173; sigma = 1; phi = 0;
  
 nl = 7;
 na = 250;
@@ -81,7 +81,7 @@ tgrid = [.086 .181];
 
 p = [1 0];
 
-ubonus = .1;
+ubonus = .001;
 
 ubonusA = [ubonus 0];
 ubonusB = [0 ubonus];
@@ -90,7 +90,8 @@ pctA = .5;
 
 % captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
-captax = linspace(0, .20, nl);
+% captax = linspace(0, .20, nl);
+captax = repelem(.15, nl);
 goal = .3652; % IMF
 
 G = [0 0];
@@ -247,10 +248,43 @@ end
 
 sound(y, Fs)
 
+
+
 %%
 date = string(datetime("today"));
-filename = strcat("..\d\results_new_kgrid_linspacecaptax_grid_EGM",date);
+cd ../d
+mkdir ./d results-20240602
+cd results-20240602\
+filename = strcat("results_changedy_flatcaptax_EGM",date);
 save(filename)
+
+clgrid = arrayfun(@num2str, round(lgrid,2), 'UniformOutput', false);
+cagrid = arrayfun(@num2str, round(agrid,2), 'UniformOutput', false);
+
+T_GaA = array2table(Ga(:,:,1), 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_GaA, 'GaA.csv', 'WriteRowNames', true);
+
+T_GaB = array2table(Ga(:,:,2), 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_GaB, 'GaB.csv', 'WriteRowNames', true);
+
+T_GbA = array2table(Gb(:,:,1), 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_GbA, 'GbA.csv', 'WriteRowNames', true);
+ 
+T_GbB = array2table(Gb(:,:,2), 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_GbB, 'GbB.csv', 'WriteRowNames', true);
+
+T_acondA = array2table(acondA, 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_acondA, 'acondA.csv', 'WriteRowNames', true);
+
+T_acondB= array2table(acondB, 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_acondB, 'acondB.csv', 'WriteRowNames', true);
+
+T_VOTESa = array2table(VOTESa, 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_VOTESa, 'VOTESa.csv', 'WriteRowNames', true);
+
+T_VOTESb = array2table(VOTESb, 'VariableNames', cagrid, 'RowNames', clgrid);
+writetable(T_VOTESb, 'VOTESb.csv', 'WriteRowNames', true);
+
 
 %% graphing
 [xgrid, ygrid] = meshgrid(lgrid,agrid);
