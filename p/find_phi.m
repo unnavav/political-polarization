@@ -15,19 +15,18 @@ restoredefaultpath;
 clear all; clc;
 addpath(genpath(pwd));
 
-load ..\d\results_changedy_flatcaptax_EGM31-May-2024.mat
+load ..\d\results-20240703\results_changedy_flatcaptax_EGM_phi32604-Jul-2024.mat
 
 dTol = 15e-4; %it's just being weird on the .001 level, so raising it slightly
 
-uh = 4; ul = 0;
+uh = 10; ul = 0;
 
 ubonus = (uh+ul)/2;
 
 ubonusA = [ubonus 0];
 ubonusB = [0 ubonus];
 
-% goal = 0.540321873; % average of post war elections results
-goal = 1 - 0.540321873; 
+goal = 0.540321873; % average of post war elections results
 
 voteDist = 10;
 iter_ct = 1;
@@ -78,7 +77,7 @@ while voteDist > dTol
             fprintf("\nToo few votes for A: %1.5f percent off mark.\n", ...
                 voteDist)
             uh = (ubonus+2*uh)/3;
-            fprintf("Decrease phi guess.")
+            fprintf("Derease phi guess.")
         end
 
         ubonus = (uh+ul)/2;

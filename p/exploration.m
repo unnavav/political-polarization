@@ -21,16 +21,16 @@ load handel
 
 vTol = 1e-5; dTol = 1e-3;
 %% params
-alpha = 0.36; delta = 0.01; beta = 0.96173; sigma = 1; phi = 0;
+alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
  
 nl = 7;
 na = 250;
 nmu = na*10;
 np = 2;
 
-al = 0+phi; ah = 10+phi;
+al = 0+phi; ah = 100+phi;
 
-wage = 1.1; r = 0.04;
+wage = 1.1; r = 0.04; % original guesses
 
 % get labor distribution and aggregate values
 %step 1: make labor grid and labor transition matrix
@@ -81,17 +81,23 @@ tgrid = [.086 .181];
 
 p = [1 0];
 
-ubonus = .001;
+ubonus = 1;
 
 ubonusA = [ubonus 0];
 ubonusB = [0 ubonus];
 
 pctA = .5;
 
-% captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
+% save for later
+cd ../d/
+save agrid.mat agrid
+save lgrid.mat lgrid
+cd ../p
+
+captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
 % captax = linspace(0, .20, nl);
-captax = repelem(.15, nl);
+% captax = repelem(.15, nl);
 goal = .3652; % IMF
 
 G = [0 0];
@@ -139,7 +145,7 @@ while DIST > dTol
         wage_inc_mu = repmat(wage*lgrid, nmu,1)';
         cap_inc_mu = zeros(size(wage_inc_mu));
         for il = 1:nl
-            cap_inc_mu(il, :) = repmat(r*amu, 1, 1)*(captax(il));
+            cap_inc_mu(il, :) = repmat(r*amu, 1, 1)*(1-captax(il));
         end
         Tmu = zeros(nl, nmu, np);
         for ip = 1:np
@@ -252,10 +258,10 @@ sound(y, Fs)
 
 %%
 date = string(datetime("today"));
-cd ../d
-mkdir ./d results-20240602
-cd results-20240602\
-filename = strcat("results_changedy_flatcaptax_EGM",date);
+cd ..
+mkdir .\d results-20240703
+cd .\d\results-20240703\
+filename = strcat("results_changedy_flatcaptax_EGM_phi326",date);
 save(filename)
 
 clgrid = arrayfun(@num2str, round(lgrid,2), 'UniformOutput', false);

@@ -17,6 +17,7 @@ library(extrafont)
 library(showtext)
 library(RColorBrewer)
 library(viridis)
+library(hrbrthemes)
 
 library(ggridges)
 

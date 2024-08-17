@@ -90,7 +90,6 @@ classdef HH
                     end
                 end
             
-            
                 %linterpolate decision rule
                 for ia = 1:na
                     k = agrid(ia);
@@ -158,8 +157,8 @@ classdef HH
             end
 
         
-            fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-                "\n\t\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
+            fprintf("\n\tIteration %i: ||TV - V|| = %4.6f" + ...
+                "\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
 
             V(:,:,1) = VA; V(:,:,2) = VB;
             G(:,:,1) = GA; G(:,:,2) = GB;
@@ -197,13 +196,13 @@ classdef HH
                         kdaval = ga(il,ix, ip)*we + ga(il,ix+1, ip)*(1.0 - we);
                         kdbval = gb(il,ix, ip)*we + gb(il,ix+1, ip)*(1.0 - we);
 
-                        [ix, we] = compute.weight(amu, kdaval);
-                        ixagrid(il, im, ip) = ix;
-                        weagrid(il, im, ip) = we;
+                        [ixa, wea] = compute.weight(amu, kdaval);
+                        ixagrid(il, im, ip) = ixa;
+                        weagrid(il, im, ip) = wea;
 
-                        [ix, we] = compute.weight(amu, kdbval);
-                        ixbgrid(il, im, ip) = ix;
-                        webgrid(il, im, ip) = we;
+                        [ixb, web] = compute.weight(amu, kdbval);
+                        ixbgrid(il, im, ip) = ixb;
+                        webgrid(il, im, ip) = web;
                     end
                 end
             end
@@ -274,19 +273,19 @@ classdef HH
 
                                 %a households' movements
                                 if (ix_a < nmu)
-                                    hha_mu1 = pil(il,jl)*muvalA*we_a;
-                                    hha_mu2 = pil(il,jl)*muvalA*(1.0 - we_a);
+                                    hha_mu1 = pil(il,jl)*muvalB*we_a;
+                                    hha_mu2 = pil(il,jl)*muvalB*(1.0 - we_a);
                                 else
-                                    hha_mu1 = pil(il,jl)*muvalA*we_a;
+                                    hha_mu1 = pil(il,jl)*muvalB*we_a;
                                     hha_mu2 = 0;
                                 end
 
                                 %b households' movements
                                 if (ix_b < nmu)
-                                    hhb_mu1  = pil(il,jl)*muvalA*we_b;
-                                    hhb_mu2 = pil(il,jl)*muvalA*(1.0 - we_b);
+                                    hhb_mu1  = pil(il,jl)*muvalB*we_b;
+                                    hhb_mu2 = pil(il,jl)*muvalB*(1.0 - we_b);
                                 else
-                                    hhb_mu1 = pil(il,jl)*muvalA;
+                                    hhb_mu1 = pil(il,jl)*muvalB;
                                     hhb_mu2 = 0;
                                 end
 
