@@ -80,7 +80,7 @@ tgrid = [.086 .181];
 
 p = [1 0];
 
-num_sens = 3;
+num_sens = 5;
 
 pctA = .5;
 
@@ -88,6 +88,7 @@ pctA = .5;
 cd ../d/
 save agrid.mat agrid
 save lgrid.mat lgrid
+save amu.mat amu
 cd ../p
 
 captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
@@ -98,8 +99,8 @@ goal = .3652; % IMF for US govt spending (G/Y)
 
 G = [0 0];
 
-ul = 0;
-uh = 0.4;
+ul = .15;
+uh = 0.25;
 uvals = linspace(ul, uh, num_sens);
 
 %% scenario 1: varying tax rates
@@ -120,8 +121,8 @@ adistr(:,:,2) = adistrB;
 
 shares = zeros(num_sens, np+3);
 
-tl = 0;
-th = 0.8;
+tl = .95;
+th = .975;
 tvals = linspace(tl, th, num_sens);
 
 ubonus = 0.1;
@@ -130,17 +131,22 @@ ubonusB = [0 ubonus];
 
 for is = 1:num_sens
 
-    tgrid_i = [tgrid(1) tgrid(2)];
+    tgrid_i = [0 tvals(is)];
 
     kDist = 10;
     gDist = 10; 
     f=10;  
-    
-    kval = (kl+ kh)/2;
-    
+
+    %init from eqm i've already solved for
+    kval = 8.75;
+    kh = kval*1.5;
+    kl = kval*.5;
+    lamval = .7023;
+    ll = lamval*.7; lh = lamval*1.3;
+
     DIST = max(kDist,gDist);
     
-    while DIST > dTol
+    while DIST > dTol*10
     
         fprintf("\n\n\n--------------------------------- > Lambda = %4.4f", lamval)
     
@@ -264,15 +270,19 @@ for is = 1:num_sens
         kDist = 10;
     end
 
-    folname = strcat("tax_scheme",sprintf('%0.4f', tgrid_i(2)));
+    sound(y, Fs)
+
+    folname = strcat("tax_scheme_",sprintf('%0.4f', tgrid_i(1)), ...
+        sprintf('%0.4f', tgrid_i(2)));
     mkdir("../d/",folname)
 
     newdir = strcat("../d/", folname);
     cd(newdir)
 
-    filename = 'results';
+    filename = 'results_pval10';
     save(filename, 'adistrA', 'adistrB', 'share2A', 'share2B', ...
-        "Ga","Gb", "Va", "Vb", "VOTESa", "VOTESb", "wage", "r", "kaggA")
+        "Ga","Gb", "Va", "Vb", "VOTESa", "VOTESb", "wage", "r", "kaggA", ...
+        "kaggB","shares", "lamval", "ubonus")
 
     cd ../../p/
 
@@ -296,7 +306,6 @@ adistr(:,:,2) = adistrB;
 
 shares = zeros(num_sens, np+3);
 
-
 for is = 1:num_sens
 
 
@@ -308,11 +317,15 @@ for is = 1:num_sens
     gDist = 10; 
     f=10;  
     
-    kval = (kl+ kh)/2;
-    
+    kval = 8.75;
+    kh = kval*1.5;
+    kl = kval*.5;
+    lamval = .7023;
+    ll = lamval*.7; lh = lamval*1.3;
+
     DIST = max(kDist,gDist);
     
-    while DIST > dTol
+    while DIST > dTol*10
     
         fprintf("\n\n\n--------------------------------- > Lambda = %4.4f", lamval)
     
@@ -394,8 +407,8 @@ for is = 1:num_sens
     %         p(2) = share2A > share2B;
     
             % 
-%             f = kaggA - kval;
-            f = kaggB - kval;
+            f = kaggA - kval;
+%             f = kaggB - kval;
         
             if f > 0
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(f))
@@ -438,15 +451,16 @@ for is = 1:num_sens
 
     sound(y, Fs)
 
-    folname = strcat("personal_return",sprintf('%i', is));
+    folname = strcat("personal_return",sprintf('%0.2f', uvals(is)));
     mkdir('../d/',folname)
 
     newdir = strcat("../d/", folname);
     cd(newdir)
 
-    filename = strcat('results',sprintf('%i', is));
+    filename ='results';
     save(filename, 'adistrA', 'adistrB', 'share2A', 'share2B', ...
-        "Ga","Gb", "Va", "Vb", "VOTESa", "VOTESb", "wage", "r", "kaggA")
+        "Ga","Gb", "Va", "Vb", "VOTESa", "VOTESb", "wage", "r", "kaggA", ...
+        "kaggB","lamval")
 
     cd ../../p/
 end
