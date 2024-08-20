@@ -131,7 +131,7 @@ ubonusB = [0 ubonus];
 
 for is = 1:num_sens
 
-    tgrid_i = [0 tvals(is)];
+    tgrid_i = [0 .95];
 
     kDist = 10;
     gDist = 10; 
@@ -139,10 +139,10 @@ for is = 1:num_sens
 
     %init from eqm i've already solved for
     kval = 8.75;
-    kh = kval*1.5;
-    kl = kval*.5;
-    lamval = .7023;
-    ll = lamval*.7; lh = lamval*1.3;
+    kh = ah;
+    kl = al;
+    lamval = .6221;
+    ll = .25; lh = 1;
 
     DIST = max(kDist,gDist);
     
@@ -228,8 +228,8 @@ for is = 1:num_sens
     %         p(2) = share2A > share2B;
     
             
-            f = kaggA - kval;
-%             f = kaggB - kval;
+%             f = kaggA - kval;
+            f = kaggB - kval;
         
             if f > 0
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(f))
@@ -239,7 +239,8 @@ for is = 1:num_sens
                 kh = (kval+2*kh)/3;
             end
         
-            kDist = abs(kaggA - kval);  
+%             kDist = abs(kaggA - kval);  
+            kDist = abs(kaggB - kval);  
             kval = .5*(kl + kh);
         end
         
@@ -248,7 +249,7 @@ for is = 1:num_sens
         tB = adistrB.*Tmu(:,:,2); %getting all taxes collected in B govt
         tB = sum(sum(tB));
         Y = kval^(alpha)*lagg^(1-alpha);
-        gy = tA/Y;
+        gy = tB/Y;
     
         if gy<goal
            fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
@@ -272,7 +273,7 @@ for is = 1:num_sens
 
     sound(y, Fs)
 
-    folname = strcat("tax_scheme_",sprintf('%0.4f', tgrid_i(1)), ...
+    folname = strcat("tax_scheme_Beqm_",sprintf('%0.4f', tgrid_i(1)), ...
         sprintf('%0.4f', tgrid_i(2)));
     mkdir("../d/",folname)
 
@@ -282,7 +283,7 @@ for is = 1:num_sens
     filename = 'results_pval10';
     save(filename, 'adistrA', 'adistrB', 'share2A', 'share2B', ...
         "Ga","Gb", "Va", "Vb", "VOTESa", "VOTESb", "wage", "r", "kaggA", ...
-        "kaggB","shares", "lamval", "ubonus")
+        "shares", "lamval", "ubonus", 'acondA', 'acondB')
 
     cd ../../p/
 

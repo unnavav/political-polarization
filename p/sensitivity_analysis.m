@@ -123,12 +123,14 @@ ul = 0.05;
 uh = .3;
 uvals = linspace(ul, uh, num_sens);
 
+tvals = linspace(.90, .95, num_sens);
+
 
 for is = 1:num_sens
 
-%     tgrid_i = [tgrid(1) tgrid(2)+tvals(is)];
+    tgrid_i = [0 tvals(is)];
     
-    ubonus = uvals(ceil(num_sens/2));
+    ubonus = .05;
     ubonusA = [ubonus 0];
     ubonusB = [0 ubonus];
 
@@ -227,16 +229,16 @@ for is = 1:num_sens
     %         p(2) = share2A > share2B;
 %     
 %             if share2A >= 0.5
-%                 f = kaggA - kval;
-%                 kDist = abs(kaggA - kval);  
+                f = kaggA - kval;
+                kDist = abs(kaggA - kval);  
 %                 if kaggA > kh
 %                     kh = min(kaggA,klwrbnd*khmult);
 %                 elseif kaggA < kl
 %                     kl = kaggA*0.5;
 %                 end
 %             else
-                f = kaggB - kval;
-                kDist = abs(kaggB - kval);  
+%                 f = kaggB - kval;
+%                 kDist = abs(kaggB - kval);  
 %                 if kaggB > kh
 %                     kh = min(kaggB,klwrbnd*khmult);
 %                 elseif kaggB < kl
@@ -255,10 +257,10 @@ for is = 1:num_sens
             kval = .5*(kl + kh);
         end
         
-%         tA = adistrA.*Tmu(:,:,1); %getting all taxes collected in A govt
-%         tA = sum(sum(tA));
-        tB = adistrB.*Tmu(:,:,2); %getting all taxes collected in B govt
-        tB = sum(sum(tB));
+        tA = adistrA.*Tmu(:,:,1); %getting all taxes collected in A govt
+        tA = sum(sum(tA));
+%         tB = adistrB.*Tmu(:,:,2); %getting all taxes collected in B govt
+%         tB = sum(sum(tB));
         Y = kval^(alpha)*lagg^(1-alpha);
         gy = tA/Y;
 %         gy = tB/Y;
@@ -292,7 +294,7 @@ for is = 1:num_sens
     newdir = strcat("../d/", folname);
     cd(newdir)
 
-    filename = strcat('resultsB',sprintf('%0.4f', tval(is)));
+    filename = strcat('resultspval05');
     save(filename, 'adistrA', 'adistrB', 'share2A', 'share2B', ...
         "Ga","Gb", "Va", "Vb", "VOTESa", "VOTESb", "wage", "r", "kaggA", ...
         "shares")
