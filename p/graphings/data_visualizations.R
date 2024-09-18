@@ -70,7 +70,7 @@ agrid = readMat("agrid.mat") %>% unlist() %>% as.vector()
 lgrid = readMat("lgrid.mat") %>%  data.table::transpose() %>%
   unlist() %>% as.vector()
 
-ligrd = lgrid %>% round(digits = 2)
+lgrid = lgrid %>% round(digits = 2)
 
 setwd(paste0(homedir, "d\\personal_return0.05"))
 results = readMat("results.mat")
@@ -192,11 +192,11 @@ GaB = results$Ga[,,2]
 GbA = results$Gb[,,1]
 GbB = results$Gb[,,2]
 
-getDecRuleA(GaA, GaB, "t95")
-getDecRuleB(GbA, GbB, "t95")
+getDecRuleA(GaA, GaB, lgrid, "t95")
+getDecRuleB(GbA, GbB, lgrid, "t95")
 
 dat = GbB - GbA
-dat = cbind(colgrid, dat %>% as.data.frame())
+dat = cbind(lgrid, dat %>% as.data.frame())
 dat = dat[c(1,4,7),]
 colnames(dat) = c('Productivity', as.character(agrid))
 ldat = gather(dat, assets,savings, 2:251)
@@ -266,7 +266,7 @@ ggsave(
 
 ### functions ----
 
-getDecRuleA = function(GaA, GaB, fileext) {
+getDecRuleA = function(GaA, GaB, colgrid, fileext) {
   
   GaAdat = cbind(colgrid, GaA)
   GaAdat = GaAdat[c(1,4,7),] %>% as.data.frame()
@@ -334,7 +334,7 @@ getDecRuleA = function(GaA, GaB, fileext) {
   
 }
 
-getDecRuleB = function(GbA, GbB, fileext) {
+getDecRuleB = function(GbA, GbB, colgrid, fileext) {
   
   GaAdat = cbind(colgrid, GbA)
   GaAdat = GaAdat[c(1,4,7),] %>% as.data.frame()
