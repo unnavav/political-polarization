@@ -375,3 +375,196 @@ cb = colorbar;
 cb.Layout.Tile = 'east';
 
 
+cd ../d/partial_eqm_test/
+
+load results_0.00
+
+tiledlayout(3,2)
+
+t1 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESa),'edgecolor','none')
+title("Household Dem's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t1, custom)
+
+t2 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESb),'edgecolor','none')
+title("Household Rep's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t2, custom)
+
+load results_0.01.mat
+
+t3 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESa),'edgecolor','none')
+title("Household Dem's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t3, custom)
+
+t4 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESb),'edgecolor','none')
+title("Household Rep's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t4, custom)
+
+load results_0.02.mat
+
+t5 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESa),'edgecolor','none')
+title("Household Dem's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t5, custom)
+
+t6 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESb),'edgecolor','none')
+title("Household Rep's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t6, custom)
+
+cb = colorbar;
+cb.Layout.Tile = 'east';
+
+
+load results_0.04_noG
+
+tiledlayout(3,2)
+
+t1 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESa),'edgecolor','none')
+title("Household Dem's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t1, custom)
+
+t2 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESb),'edgecolor','none')
+title("Household Rep's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t2, custom)
+
+load results_0.10_noG.mat
+
+t3 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESa),'edgecolor','none')
+title("Household Dem's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t3, custom)
+
+t4 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESb),'edgecolor','none')
+title("Household Rep's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t4, custom)
+
+load results_0.13_noG.mat
+
+t5 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESa),'edgecolor','none')
+title("Household Dem's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t5, custom)
+
+t6 = nexttile;
+hold on
+set(gca,'fontname','century')
+contourf(transpose(VOTESb),'edgecolor','none')
+title("Household Rep's Voting Rule")
+subtitle(' ')
+yticks([50 100 150 200 250])
+yticklabels(round(agrid([50 100 150 200 250]), 2))
+ylabel('Household Wealth')
+xticklabels(round(lgrid, 2))
+xlabel('Idiosyncratic Productivity (ε)')
+% set(gca, 'YScale', 'log')
+colormap(t6, custom)
+
+cb = colorbar;
+cb.Layout.Tile = 'east';
+
