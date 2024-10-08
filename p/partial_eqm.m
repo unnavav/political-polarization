@@ -73,7 +73,8 @@ adj = 1/3;
 %party tax regimes
 % tgrid = [1-.181 1-.086]; 
 tgrid = [.086 .181]; 
-captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
+% captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
+captax = [repelem(0, nl)]; %IRS
 goal = .3652; % IMF for US govt spending (G/Y
 
 p = [1 0];
@@ -153,7 +154,7 @@ for is = 1:num_sens
             G(ip) = sum(sum(Tmu(:,:,ip).*adistr(:,:,ip)));
         end
 
-        G = [0 0];
+%         G = [0 0];
 
         %prepare for VFI
         terms = struct('beta', beta, ...
