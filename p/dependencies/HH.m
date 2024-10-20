@@ -13,8 +13,8 @@ classdef HH
             beta = terms.beta;
             sigma = terms.sigma;
             phi = terms.phi;
-            r = terms.r;
-            w = terms.wage;
+            K = terms.K;
+            L = terms.L;
             lgrid = terms.lgrid;
             agrid = terms.agrid;
             pil = terms.pil;
@@ -24,21 +24,20 @@ classdef HH
             lamval = terms.lamval;
             tau = terms.tau;
             p = terms.p;
-            
-            V = zeros(nl, na, np);
-            G = V;
+            eta = terms.eta;
 
-            VA = zeros(nl, na);
-            TVA = VA;
-            
-            GA = VA;
-            TGA = VA;
-            
-            VB = zeros(nl, na);
-            TVB = VB;
-            
-            GB = VB;
-            TGB = VB;
+            % no migration (populist)
+            rp = alpha*(K^(alpha - 1)*(L^(1-alpha))) - delta;
+            wp = (1-alpha)*((K^(alpha))*(L^(-alpha)));
+
+            % yes migration (liberalist)
+            rl = alpha*(K^(alpha - 1)*((L*eta)^(1-alpha))) - delta;
+            wl = (1-alpha)*((K^(alpha))*((L*eta)^(-alpha)));
+
+            VL = zeros(nl, na);
+            VP = zeros(nl, na);
+            G = VL;
+            TV = VL; V = VL; 
 
             V0 = zeros(nl, na);
 
@@ -49,44 +48,58 @@ classdef HH
                 for il = 1:nl
                     yval = scale*(1+r*(1-captax(il)))*kval + w*lgrid(il) - r*phi;
                     ymin = max(1e-10, yval);
-                    VA(il, ia) = log(ymin);
-                    VB(il, ia) = log(ymin);
+                    VL(il, ia) = log(ymin);
+                    VP(il, ia) = log(ymin);
                 end
             end
             
-            
+            %init expected vals
+            for ia = 1:na
+                for il = 1:nl
+                    for ip = 1:np
+                        prob = p(ip);
+                        V0(il, ia, ip) = prob*pil(il,:)*VP(:,ia) + ...
+                            (1-prob)*pil(il,:)*VB(:,ia);
+                    end
+                end
+            end
+
             dist = 1e5;
             iter_ct = 1;
             
             while dist > vTol
             
+                % making a change--I calculate c_{t+1} given our decision
+                % rule at productivity il, asset ia. then use that to get
+                % expected value. So will need a different VA,VB   
                 for ia = 1:na
                     for il = 1:nl
-                        for ip = 1:np
-                            prob = p(ip);
-                            V0(il, ia, ip) = prob*pil(il,:)*VA(:,ia) + ...
-                                (1-prob)*pil(il,:)*VB(:,ia);
-                        end
+                        ca = (1+r)*agrid(ia) + gov.tax(wl*lgrid(il), lamval, ...
+                            tau(1)) - G(il, ia);
+                        VP(il, ia) = log(ca) + beta*V0(il, ia);
+                        cb = (1+r2)*agrid(ia) + gov.tax(wp*lgrid(il), lamval, ...
+                            tau(2)) - G(il, ia);
+                        VL(il, ia) = log(cb) + beta*V0(il, ia);
                     end
                 end
             
-                %endogrid choice
-                endoKA = zeros(size(VA));
-                endoKB = endoKA;
+                %now get expectation
+                for ia = 1:na
+                    for il = 1:nl
+                        V0(il, ia) = p*pil(il,:)*VP(:,ia) + ...
+                            (1-prob)*p(il,:)*VB(:,ia);
+                    end
+                end
+
+                %endogrid choice: back out K from consumption of EE
+                endoK = zeros(size(VP));
                 for ia = 1:na
                     kpr = agrid(ia);
                     for il = 1:nl
-                        l = lgrid(il);
-                        D = egm.solveD(V0(il,:), ia, agrid);
-                        
-                        endoKA(il, ia) = ((beta*D)^(-1) + kpr - ...
-                            w*l + gov.tax(w*l, lamval, tau(1)) - g(1) + ...
-                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
-
-                        endoKB(il, ia) = ((beta*D)^(-1) + kpr - ...
-                            w*l + gov.tax(w*l, lamval, tau(2)) - g(2) + ...
-                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
-
+                        l = lgrid(il);                        
+                        c = exp(beta*(p*VP(il, ia)+(1-p)*VL(il,ia)));
+                        endoK(il, ia) = (1+rl)*kpr + gov.tax(wl*l,lamval, ...
+                            tgrid(1+round(p/1)))-c;
                     end
                 end
             
@@ -94,24 +107,14 @@ classdef HH
                 for ia = 1:na
                     k = agrid(ia);
                     for il = 1:nl
-                        lkvals = endoKA(il, :);
+                        lkvals = endoK(il, :);
                         
                         if k < lkvals(1)
-                            GA(il, ia) = agrid(1);
+                            G(il, ia) = agrid(1);
                         else 
                             [ix, we] = compute.weight(lkvals, k);
                             kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
-                            GA(il, ia) = max(agrid(1), kpr);
-                        end
-
-                        lkvals = endoKB(il, :);
-                        
-                        if k < lkvals(1)
-                            GB(il, ia) = agrid(1);
-                        else 
-                            [ix, we] = compute.weight(lkvals, k);
-                            kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
-                            GB(il, ia) = max(agrid(1), kpr);
+                            G(il, ia) = max(agrid(1), kpr);
                         end
 
                     end
@@ -123,24 +126,16 @@ classdef HH
 
                         %A in power
                         c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau(1)) ...
-                            + g(1) - GA(il, ia) - r*(1-captax(il))*phi;
-                        [ix, we] = compute.weight(agrid, GA(il, ia));
+                            + g(1) - G(il, ia) - r*(1-captax(il))*phi;
+                        [ix, we] = compute.weight(agrid, G(il, ia));
                         ev = we*V0(il, ix,1) + (1-we)*V0(il, ix+1,1);
-                        TVA(il, ia) = log(c) + ubonus(1) + beta*ev;
+                        V(il, ia) = log(c) + beta*ev;
 
-                        %B in power
-                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau(2)) ...
-                            + g(2) - GB(il, ia) - r*(1-captax(il))*phi;
-                        [ix, we] = compute.weight(agrid, GB(il, ia));
-                        ev = we*V0(il, ix,2) + (1-we)*V0(il, ix+1,2);
-                        TVB(il, ia) = log(c) + ubonus(2) + beta*ev;
                     end
                 end
             
-                dist = max(compute.dist(TVA, VA, 2), ...
-                    compute.dist(TVB, VB, 2));
-                kdist = max(compute.dist(TGA, GA, 2), ...
-                    compute.dist(TGB, GB, 2));
+                dist = compute.dist(TV, V, 2);
+                kdist = max(compute.dist(TG, G, 2));
             
 %                 if mod(iter_ct, 10) == 0
 %                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
@@ -149,11 +144,8 @@ classdef HH
             
                 iter_ct = iter_ct + 1;
             
-                VA = TVA;
-                TGA = GA;
-
-                VB = TVB;
-                TGB = GB;
+                TV = V;
+                TG = G;
             end
 
         
