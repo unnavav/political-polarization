@@ -8,7 +8,7 @@ classdef HH
         %   - ubonus
         %   - tau
         %   - g
-        function [V, G, V0] = solve(nl, na, np, terms, vTol)
+        function [V, G, V0, VOTES] = solve(nl, na, terms, vTol)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -19,7 +19,6 @@ classdef HH
             agrid = terms.agrid;
             pil = terms.pil;
             g = terms.G;
-            ubonus = terms.ubonus;
             captax = terms.captax;
             lamval = terms.lamval;
             tau = terms.tau;
@@ -37,6 +36,7 @@ classdef HH
             VL = zeros(nl, na);
             VP = zeros(nl, na);
             G = VL;
+            TG = G;
             TV = VL; V = VL; 
 
             V0 = zeros(nl, na);
@@ -46,7 +46,7 @@ classdef HH
             for ia = 1:na
                 kval = agrid(ia);
                 for il = 1:nl
-                    yval = scale*(1+r*(1-captax(il)))*kval + w*lgrid(il) - r*phi;
+                    yval = scale*(1+r*(1-captax(il)))*kval + wp*lgrid(il) - r*phi;
                     ymin = max(1e-10, yval);
                     VL(il, ia) = log(ymin);
                     VP(il, ia) = log(ymin);
@@ -56,11 +56,8 @@ classdef HH
             %init expected vals
             for ia = 1:na
                 for il = 1:nl
-                    for ip = 1:np
-                        prob = p(ip);
-                        V0(il, ia, ip) = prob*pil(il,:)*VP(:,ia) + ...
-                            (1-prob)*pil(il,:)*VB(:,ia);
-                    end
+                    V0(il, ia) = prob*pil(il,:)*VP(:,ia) + ...
+                        (1-prob)*pil(il,:)*VL(:,ia);
                 end
             end
 
@@ -72,88 +69,78 @@ classdef HH
                 % making a change--I calculate c_{t+1} given our decision
                 % rule at productivity il, asset ia. then use that to get
                 % expected value. So will need a different VA,VB   
+                Cpr = V; CA = Cpr; CB = Cpr;
                 for ia = 1:na
                     for il = 1:nl
-                        ca = (1+r)*agrid(ia) + gov.tax(wl*lgrid(il), lamval, ...
+                        ca = (1+rp)*agrid(ia) + gov.tax(wp*lgrid(il), lamval, ...
                             tau(1)) - G(il, ia);
+                        CA(il, ia) = ca;
                         VP(il, ia) = log(ca) + beta*V0(il, ia);
-                        cb = (1+r2)*agrid(ia) + gov.tax(wp*lgrid(il), lamval, ...
+                        cb = (1+rl)*agrid(ia) + gov.tax(wl*lgrid(il), lamval, ...
                             tau(2)) - G(il, ia);
+                        CB(il, ia) = cb;
                         VL(il, ia) = log(cb) + beta*V0(il, ia);
+                        Cpr(il,ia) = (p*(ca)^(-1)+(1-p)*(cb)^(-1));
                     end
                 end
+
+                C = (beta*Cpr).^(-1);
+
+                for il = 1:nl
+                    for ia = 1:na
+                        EVP(il, ia) = pil(il,:)*VP(:,ia);
+                        EVL(il, ia) = pil(il,:)*VL(:,ia);
+                    end
+                end
+                VOTES = EVP > EVL;
             
                 %now get expectation
-                for ia = 1:na
-                    for il = 1:nl
-                        V0(il, ia) = p*pil(il,:)*VP(:,ia) + ...
-                            (1-prob)*p(il,:)*VB(:,ia);
-                    end
-                end
+                V0 = p*EVP + (1-p)*EVL;
 
                 %endogrid choice: back out K from consumption of EE
-                endoK = zeros(size(VP));
                 for ia = 1:na
-                    kpr = agrid(ia);
+                    kch = agrid(ia);
                     for il = 1:nl
-                        l = lgrid(il);                        
-                        c = exp(beta*(p*VP(il, ia)+(1-p)*VL(il,ia)));
-                        endoK(il, ia) = (1+rl)*kpr + gov.tax(wl*l,lamval, ...
-                            tgrid(1+round(p/1)))-c;
-                    end
-                end
-            
-                %linterpolate decision rule
-                for ia = 1:na
-                    k = agrid(ia);
-                    for il = 1:nl
-                        lkvals = endoK(il, :);
-                        
-                        if k < lkvals(1)
+                        l = lgrid(il);  
+
+                        % back out K choice from BC and today's state
+                        G(il, ia) = C(il, ia) - gov.tax(wl*l,lamval, ...
+                            tgrid(1+round(p/1))) - kch*(1+rl*(1-captax(il)));
+
+                        if G(il, ia) < agrid(1)
                             G(il, ia) = agrid(1);
-                        else 
-                            [ix, we] = compute.weight(lkvals, k);
-                            kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
-                            G(il, ia) = max(agrid(1), kpr);
                         end
-
                     end
                 end
             
+                %finally calculate value function
                 for ia = 1:na
                     for il = 1:nl
-                        l = lgrid(il);
-
-                        %A in power
-                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau(1)) ...
-                            + g(1) - G(il, ia) - r*(1-captax(il))*phi;
                         [ix, we] = compute.weight(agrid, G(il, ia));
                         ev = we*V0(il, ix,1) + (1-we)*V0(il, ix+1,1);
-                        V(il, ia) = log(c) + beta*ev;
-
+                        V(il, ia) = log(C(il, ia)) + beta*ev;
                     end
                 end
             
                 dist = compute.dist(TV, V, 2);
                 kdist = max(compute.dist(TG, G, 2));
             
-%                 if mod(iter_ct, 10) == 0
-%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
-%                 end
+                if mod(iter_ct, 50) == 0
+                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+                        "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+                end
             
                 iter_ct = iter_ct + 1;
             
                 TV = V;
                 TG = G;
+                disp(dist)
             end
 
         
             fprintf("\n\tIteration %i: ||TV - V|| = %4.6f" + ...
                 "\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
 
-            V(:,:,1) = VA; V(:,:,2) = VB;
-            G(:,:,1) = GA; G(:,:,2) = GB;
         end
 
         % we have two types of heterogeniety: wealth and political agent
