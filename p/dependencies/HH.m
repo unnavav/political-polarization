@@ -23,41 +23,33 @@ classdef HH
             lamval = terms.lamval;
             tau = terms.tau;
             p = terms.p;
-            eta = terms.eta;
 
             % no migration (populist)
-            rp = alpha*(K^(alpha - 1)*(L^(1-alpha))) - delta;
-            wp = (1-alpha)*((K^(alpha))*(L^(-alpha)));
+            r = terms.r;
+            w = terms.w;
 
-            % yes migration (liberalist)
-            rl = alpha*(K^(alpha - 1)*((L*eta)^(1-alpha))) - delta;
-            wl = (1-alpha)*((K^(alpha))*((L*eta)^(-alpha)));
-
-            VL = zeros(nl, na);
-            VP = zeros(nl, na);
-            G = VL;
+            V = zeros(nl, na);
+            G = V;
             TG = G;
-            TV = VL; V = VL; 
+            TV = V; 
 
             V0 = zeros(nl, na);
 
             % set up V so that it doesn't start empty
-            scale = .0025;
+            scale = .25;
             for ia = 1:na
                 kval = agrid(ia);
                 for il = 1:nl
-                    yval = scale*(1+r*(1-captax(il)))*kval + wp*lgrid(il) - r*phi;
+                    yval = scale*(1+r*(1-captax(il)))*kval + w*lgrid(il) - r*phi;
                     ymin = max(1e-10, yval);
-                    VL(il, ia) = log(ymin);
-                    VP(il, ia) = log(ymin);
+                    V(il, ia) = log(ymin);
                 end
             end
             
             %init expected vals
             for ia = 1:na
                 for il = 1:nl
-                    V0(il, ia) = prob*pil(il,:)*VP(:,ia) + ...
-                        (1-prob)*pil(il,:)*VL(:,ia);
+                    V0(il, ia) = pil(il,:)*V(:,ia);
                 end
             end
 
@@ -65,76 +57,71 @@ classdef HH
             iter_ct = 1;
             
             while dist > vTol
-            
-                % making a change--I calculate c_{t+1} given our decision
-                % rule at productivity il, asset ia. then use that to get
-                % expected value. So will need a different VA,VB   
-                Cpr = V; CA = Cpr; CB = Cpr;
+                        
+                %endogrid choice
+                endoK = zeros(size(V));
                 for ia = 1:na
+                    kpr = agrid(ia);
                     for il = 1:nl
-                        ca = (1+rp)*agrid(ia) + gov.tax(wp*lgrid(il), lamval, ...
-                            tau(1)) - G(il, ia);
-                        CA(il, ia) = ca;
-                        VP(il, ia) = log(ca) + beta*V0(il, ia);
-                        cb = (1+rl)*agrid(ia) + gov.tax(wl*lgrid(il), lamval, ...
-                            tau(2)) - G(il, ia);
-                        CB(il, ia) = cb;
-                        VL(il, ia) = log(cb) + beta*V0(il, ia);
-                        Cpr(il,ia) = (p*(ca)^(-1)+(1-p)*(cb)^(-1));
+                        l = lgrid(il);
+                        D = egm.solveD(V0(il,:), ia, agrid);
+
+                        endoK(il, ia) = ((beta*D)^(-1) + kpr - w*l +...
+                            gov.tax(w*l, lamval, tau(1)) - g(1) + ...
+                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
                     end
                 end
-
-                C = (beta*Cpr).^(-1);
-
-                for il = 1:nl
-                    for ia = 1:na
-                        EVP(il, ia) = pil(il,:)*VP(:,ia);
-                        EVL(il, ia) = pil(il,:)*VL(:,ia);
-                    end
-                end
-                VOTES = EVP > EVL;
             
-                %now get expectation
-                V0 = p*EVP + (1-p)*EVL;
-
-                %endogrid choice: back out K from consumption of EE
+                %linterpolate decision rule
                 for ia = 1:na
-                    kch = agrid(ia);
+                    k = agrid(ia);
                     for il = 1:nl
-                        l = lgrid(il);  
-
-                        % back out K choice from BC and today's state
-                        G(il, ia) = C(il, ia) - gov.tax(wl*l,lamval, ...
-                            tgrid(1+round(p/1))) - kch*(1+rl*(1-captax(il)));
-
-                        if G(il, ia) < agrid(1)
+                        lkvals = endoK(il, :);
+                        
+                        if k < lkvals(1)
                             G(il, ia) = agrid(1);
+                        else 
+                            [ix, we] = compute.weight(lkvals, k);
+                            kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
+                            G(il, ia) = max(agrid(1), kpr);
                         end
                     end
                 end
             
-                %finally calculate value function
                 for ia = 1:na
                     for il = 1:nl
+                        l = lgrid(il);
+
+                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau(1)) ...
+                            + g - G(il, ia) - r*(1-captax(il))*phi;
+
+                        c = max(1e-10, c);
+
                         [ix, we] = compute.weight(agrid, G(il, ia));
-                        ev = we*V0(il, ix,1) + (1-we)*V0(il, ix+1,1);
-                        V(il, ia) = log(C(il, ia)) + beta*ev;
+                        ev = we*V0(il, ix) + (1-we)*V0(il, ix+1);
+                        TV(il, ia) = log(c) + beta*ev;
                     end
                 end
             
                 dist = compute.dist(TV, V, 2);
-                kdist = max(compute.dist(TG, G, 2));
+                kdist = compute.dist(TG, G, 2);
             
-                if mod(iter_ct, 50) == 0
-                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-                        "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
-                end
+%                 if mod(iter_ct, 50) == 0
+%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+%                 end
             
                 iter_ct = iter_ct + 1;
             
-                TV = V;
+                V = TV;
                 TG = G;
-                disp(dist)
+
+                for ia = 1:na
+                    for il = 1:nl
+                        V0(il, ia) = pil(il,:)*V(:,ia);
+                    end
+                end
+
             end
 
         
@@ -150,39 +137,28 @@ classdef HH
         % e.g. 25% of HH a's have savings of 100 under party A, but
         % only 50% of HH are party a, so in actuality only 12.5% of
         % distr is at 100. 
-        function [mu1A, KaggA, mu1B, KaggB] = getDist(ga, gb, amu, agrid, pil, pctA)
+        function [mu1, kagg] = getDist(G, amu, agrid, pil)
 
-            [nl, ~, np] = size(ga);
+            [nl, ~] = size(G);
             [~, nmu] = size(amu);
-            muA = zeros(nl, nmu);
-            muB = zeros(nl, nmu);
+            mu = zeros(nl, nmu);
 
             %nomenclature: ixagrid is indices for HH a for both parties.
-            ixagrid = zeros(size(ga)); weagrid = ixagrid; 
-            ixbgrid = ixagrid; webgrid = ixagrid;
+            ixgrid = zeros(size(G)); wegrid = ixgrid;
           
             % We linearly interpolate the policy function on agrid to compute
             % afval on the distribution support.
             for im = 1:nmu
                 kval = amu(im);
                 for il = 1:nl  
-                    for ip = 1:np
-
+                    [ix, we] = compute.weight(agrid, kval);
                         
-                        [ix, we] = compute.weight(agrid, kval);
-                            
-                        %split between rep and dem capital choices
-                        kdaval = ga(il,ix, ip)*we + ga(il,ix+1, ip)*(1.0 - we);
-                        kdbval = gb(il,ix, ip)*we + gb(il,ix+1, ip)*(1.0 - we);
+                    %split between rep and dem capital choices
+                    kdval = G(il,ix)*we + G(il,ix+1)*(1.0 - we);
 
-                        [ixa, wea] = compute.weight(amu, kdaval);
-                        ixagrid(il, im, ip) = ixa;
-                        weagrid(il, im, ip) = wea;
-
-                        [ixb, web] = compute.weight(amu, kdbval);
-                        ixbgrid(il, im, ip) = ixb;
-                        webgrid(il, im, ip) = web;
-                    end
+                    [ix, we] = compute.weight(amu, kdval);
+                    ixgrid(il, im) = ix;
+                    wegrid(il, im) = we;
                 end
             end
             
@@ -190,122 +166,56 @@ classdef HH
             
             % nomenclature: muA is the distribution over assets when A is 
             % in power
-            for im = 1:nmu
-                for il = 1:nl
-                    muA(il,im) = 1.0/(nmu*nl);
-                    muB(il,im) = 1.0/(nmu*nl);
-                end
-            end
+            mu = ones(size(mu))*(1/(nmu*nl));
 
             while (distance > 1e-6 && iter_ct < 3000)
                 
-                mu1A = zeros(size(muA));
-                mu1B = zeros(size(muB));
+                mu1 = zeros(size(mu));
                 
                 for im = 1:nmu
                     for il = 1:nl
                         
-                        %Party A ---------------
-                        ip = 1;
-
                         %need weighting for a and b HH under party A
-                        ix_a = ixagrid(il,im, ip); we_a = weagrid(il,im, ip); 
-                        ix_b = ixbgrid(il,im, ip); we_b = webgrid(il,im, ip); 
-                        muvalA = muA(il, im); 
+                        ix = ixgrid(il,im); we = wegrid(il,im); 
+                        muval = mu(il, im); 
                         
-                        if muvalA > 0
+                        if muval > 0
                             for jl = 1:nl
 
                                 %a households' movements
-                                if (ix_a < nmu)
-                                    hha_mu1 = pil(il,jl)*muvalA*we_a;
-                                    hha_mu2 = pil(il,jl)*muvalA*(1.0 - we_a);
+                                if (ix < nmu)
+                                    mu_val1 = pil(il,jl)*muval*we;
+                                    mu_val2 = pil(il,jl)*muval*(1.0 - we);
                                 else
-                                    hha_mu1 = pil(il,jl)*muvalA*we_a;
-                                    hha_mu2 = 0;
+                                    mu_val1 = pil(il,jl)*muval*we;
+                                    mu_val2 = 0;
                                 end
 
-                                %b households' movements
-                                if (ix_b < nmu)
-                                    hhb_mu1  = pil(il,jl)*muvalA*we_b;
-                                    hhb_mu2 = pil(il,jl)*muvalA*(1.0 - we_b);
-                                else
-                                    hhb_mu1 = pil(il,jl)*muvalA;
-                                    hhb_mu2 = 0;
-                                end
-
-                                mu1A(jl,ix_a) = mu1A(jl,ix_a) + pctA*hha_mu1 ...
-                                    + (1-pctA)*hhb_mu1;
-                                mu1A(jl,ix_a+1) = mu1A(jl,ix_a+1) + pctA*hha_mu2 ...
-                                    + (1-pctA)*hhb_mu2;
+                                mu1(jl,ix) = mu1(jl,ix) + mu_val1;
+                                mu1(jl,ix+1) = mu1(jl,ix+1) + mu_val2;
                             end
                         end
-
-                        %Party B ---------------
-                        ip = 2;
-                        ix_a = ixagrid(il,im, ip); we_a = weagrid(il,im, ip); 
-                        ix_b = ixbgrid(il,im, ip); we_b = webgrid(il,im, ip);
-                        muvalB = muB(il, im);
-
-                        if muvalB > 0
-                            for jl = 1:nl
-
-                                %a households' movements
-                                if (ix_a < nmu)
-                                    hha_mu1 = pil(il,jl)*muvalB*we_a;
-                                    hha_mu2 = pil(il,jl)*muvalB*(1.0 - we_a);
-                                else
-                                    hha_mu1 = pil(il,jl)*muvalB*we_a;
-                                    hha_mu2 = 0;
-                                end
-
-                                %b households' movements
-                                if (ix_b < nmu)
-                                    hhb_mu1  = pil(il,jl)*muvalB*we_b;
-                                    hhb_mu2 = pil(il,jl)*muvalB*(1.0 - we_b);
-                                else
-                                    hhb_mu1 = pil(il,jl)*muvalB;
-                                    hhb_mu2 = 0;
-                                end
-
-                                mu1B(jl,ix_a) = mu1B(jl,ix_a) + pctA*hha_mu1 ...
-                                    + (1-pctA)*hhb_mu1;
-                                mu1B(jl,ix_a+1) = mu1B(jl,ix_a+1) + pctA*hha_mu2 ...
-                                    + (1-pctA)*hhb_mu2;
-                            end
-                        end
-
                     end
                 end
                                 
-                distanceA = compute.dist(mu1A, muA, 3);
-                distanceB = compute.dist(mu1B, muB, 3);
+                distance = compute.dist(mu1, mu, 2);
 
 %                 if (mod(iter_ct,50) == 0)
-%                     s = sprintf( '\n\t\tIteration %3i: ||Tma - ma|| = %8.6f\tsum = %6.4f ', ...
-%                         iter_ct, distanceA, sum(sum(mu1A)));
-%                     disp(s);
-%                     s = sprintf( '\n\t\t\t\t\t\t||Tmb - mb|| = %8.6f\tsum = %6.4f ', ...
-%                         distanceB, sum(sum(mu1B)));
-%                     disp(s);
+%                     s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
+%                         iter_ct, distance, sum(sum(mu1)));
+%                     disp(s)
 %                 end
                 
-                distance = max(distanceA, distanceB);
-
                 iter_ct = iter_ct + 1;
             
-                muA = mu1A;   
-                muB = mu1B;   
+                mu = mu1;   
             end
             s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-                iter_ct, distance, sum(sum(muA)));
+                iter_ct, distance, sum(sum(mu)));
             disp(s);
 
-            distrA2500 = sum(muA,1);
-            KaggA = amu*distrA2500';
-
-            distrB2500 = sum(muB,1);
-            KaggB = amu*distrB2500';
+            distrA2500 = sum(mu,1);
+            kagg = amu*distrA2500';
         end
 
 
