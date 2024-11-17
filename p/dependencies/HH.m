@@ -67,7 +67,7 @@ classdef HH
                         D = egm.solveD(V0(il,:), ia, agrid);
 
                         endoK(il, ia) = ((beta*D)^(-1) + kpr - w*l +...
-                            gov.tax(w*l, lamval, tau(1)) - g(1) + ...
+                            gov.tax(w*l, lamval, tau) - g(1) + ...
                             r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
                     end
                 end
@@ -92,7 +92,7 @@ classdef HH
                     for il = 1:nl
                         l = lgrid(il);
 
-                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau(1)) ...
+                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau) ...
                             + g - G(il, ia) - r*(1-captax(il))*phi;
 
                         c = max(1e-10, c);
