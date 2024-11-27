@@ -8,13 +8,11 @@ classdef HH
         %   - ubonus
         %   - tau
         %   - g
-        function [V, G, V0, VOTES] = solve(nl, na, terms, vTol)
+        function [V, G, V0] = solve(nl, na, terms, vTol)
 
             beta = terms.beta;
             sigma = terms.sigma;
             phi = terms.phi;
-            K = terms.K;
-            L = terms.L;
             lgrid = terms.lgrid;
             agrid = terms.agrid;
             pil = terms.pil;
@@ -22,9 +20,7 @@ classdef HH
             captax = terms.captax;
             lamval = terms.lamval;
             tau = terms.tau;
-            p = terms.p;
 
-            % no migration (populist)
             r = terms.r;
             w = terms.w;
 

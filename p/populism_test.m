@@ -83,7 +83,7 @@ adj = 1/3;
 %party tax regimes
 % tgrid = [0 .2]; 
 tgrid = [.15 .05]; 
-eta = [1.02 1.04];
+eta = [1.00 1.1];
 
 p = 1;
 
@@ -105,10 +105,145 @@ for i = 1:2
     for im = 1:nmu
         for il = 1:nl
             adistr(il,im) = 1.0/(nmu*nl);
-        end
+        end 
     end
     
     growth_lagg = lagg*eta(i);
+
+    kDist = 10;
+    gDist = 10; 
+    f=10;  
+    
+    %init from eqm i've already solved for
+    kval = 8.75;
+    lamval = .6221;
+    ll = .25; lh = 1;
+    
+    DIST = max(kDist,gDist);
+    
+    while DIST > dTol*10
+    
+        fprintf("\n\n\n--------------------------------- > Lambda = %4.4f", lamval)
+    
+        while kDist > dTol
+        
+            fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
+            fprintf("\nA guess: %4.8f. Begin iteration for solution...\n", kval)
+            fprintf("\t Solving value function:\n")
+            
+            % first getting equilibrium objects like prices, govt spending, etc
+            r = alpha*(kval^(alpha - 1)*(growth_lagg^(1-alpha))) - delta;
+            wage = (1-alpha)*((kval^(alpha))*(growth_lagg^(-alpha)));
+    
+            wage_inc_mu = repmat(wage*lgrid, nmu,1)';
+            cap_inc_mu = zeros(size(wage_inc_mu));
+            for il = 1:nl
+                cap_inc_mu(il, :) = repmat(r*amu, 1, 1)*(1-captax(il));
+            end
+            Tmu = zeros(nl, nmu, np);
+            for ip = 1:np
+                Tmu(:,:,ip) = wage_inc_mu - gov.tax(wage_inc_mu,lamval,tgrid(ip)) + ...
+                    cap_inc_mu;
+            end
+    
+            G = sum(sum(Tmu(:,:,i).*adistr(:,:)));
+    
+            %prepare for VFI
+            terms = struct('beta', beta, ...
+                'sigma', sigma, ...
+                'phi', phi, ...
+                'agrid', agrid, ...
+                'lgrid', lgrid, ...
+                'pil', pil, ...
+                'lamval', lamval, ...
+                'captax', captax, ...
+                'tau', tgrid(i), ...
+                'G', G, ...
+                'p', p, ...
+                'K', kagg, ...
+                'L', growth_lagg, ...
+                'r', r, ...
+                'w', wage);
+        
+            fprintf("Solving value function:\n")
+    
+            [V, G, EV] = HH.solve(nl, na, terms, vTol);
+         
+    
+            fprintf("\tSolving asset distribution:\n")
+            [adistr, kagg] = HH.getDist(G, amu, agrid, pil);
+        
+    %         % CONDENSE DISTR
+            acond = compute.condense(adistr, amu, agrid);
+                
+            kdist = kagg - kval;
+        
+            if kdist > 0
+                fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(kdist))
+                kl = (kval+kl)/2;
+            else
+                fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too high.\n", abs(kdist))
+                kh = (kval+kh)/2;
+            end
+        
+            kDist = abs(kdist);  
+            kval = .5*(kl + kh);
+        end
+        
+        t = adistr.*Tmu(:,:,i); %getting all taxes collected in A govt
+        t = sum(sum(t));
+        Y = kval^(alpha)*growth_lagg^(1-alpha);
+        gy = t/Y;
+    
+        if gy<goal
+           fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
+               "\tTax rate is too high.\n\n", gy, lamval)
+           lh = (lamval*adj+(1-adj)*lh);
+        else
+           fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
+               "\tTax rate is too low.\n\n", gy, lamval);
+           ll = (lamval*adj+(1-adj)*ll);
+        end
+    
+        gDist = abs(gy-goal);
+        lamval = .5*(ll + lh);
+    
+        DIST = max(kDist, gDist);
+        fprintf("||DIST|| = %4.4f\n", DIST)
+        kl = klwrbnd*klmult;
+        kh = klwrbnd*khmult;
+        kDist = 10;
+    end
+    
+    newdir = strcat("../d/", folname);
+    cd(newdir)
+
+    filename = strcat("results_t",sprintf('%0.4f', tgrid(i)), ...
+        "_eta", sprintf('%0.4f', eta(i)), ".mat");
+    save(filename, 'adistr', "G","V", "wage", "r", "kagg", ...
+        "lamval", "eta", 'tgrid')
+
+    filename = strcat("terms_struct_t", sprintf('%0.4f', tgrid(i)), ...
+        "_eta", sprintf('%0.4f', eta(i)), ".mat");
+    save(filename, "terms")
+
+    cd ../../p/
+
+end
+
+%% now changing growth paths
+
+for i = 1:2
+
+    adistr = zeros(nl, nmu);
+    
+    for im = 1:nmu
+        for il = 1:nl
+            adistr(il,im) = 1.0/(nmu*nl);
+        end
+    end
+    
+    growth_lagg = lagg*eta(1)*eta(2);
 
 
     kDist = 10;
@@ -143,15 +278,15 @@ for i = 1:2
             end
             Tmu = zeros(nl, nmu, np);
             for ip = 1:np
-                Tmu(:,:,ip) = wage_inc_mu - gov.tax(wage_inc_mu,lamval,tgrid(2)) + ...
+                Tmu(:,:,ip) = wage_inc_mu - gov.tax(wage_inc_mu,lamval,tgrid(ip)) + ...
                     cap_inc_mu;
             end
     
-            ip = 1;
-            G = sum(sum(Tmu(:,:,ip).*adistr(:,:)));
+            G = sum(sum(Tmu(:,:,i).*adistr(:,:)));
     
             %prepare for VFI
-            terms = struct('beta', beta, ...
+            terms = struct('alpha', alpha, ...
+                'beta', beta, ...
                 'sigma', sigma, ...
                 'phi', phi, ...
                 'agrid', agrid, ...
@@ -192,7 +327,7 @@ for i = 1:2
             kval = .5*(kl + kh);
         end
         
-        t = adistr.*Tmu(:,:,1); %getting all taxes collected in A govt
+        t = adistr.*Tmu(:,:,i); %getting all taxes collected in A govt
         t = sum(sum(t));
         Y = kval^(alpha)*growth_lagg^(1-alpha);
         gy = t/Y;
@@ -220,10 +355,12 @@ for i = 1:2
     newdir = strcat("../d/", folname);
     cd(newdir)
 
-    filename = strcat("results_t",sprintf('%0.4f', tgrid(i)), ...
+    filename = strcat("results_transition_t",sprintf('%0.4f', tgrid(i)), ...
         "_eta", sprintf('%0.4f', eta(i)), ".mat");
     save(filename, 'adistr', "G","V", "wage", "r", "kagg", ...
         "lamval", "eta", 'tgrid')
+
+    save("params", "terms")
 
     cd ../../p/
 
