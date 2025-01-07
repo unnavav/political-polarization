@@ -39,7 +39,7 @@ r = 0.04;
 %step 1: make labor grid and labor transition matrix
 
 mu = 0;
-rho = .9554;
+rho = .5;
 sig_l = 0.5327;
  
 % need to back out sigma^2_e given sigma^2_l
@@ -116,7 +116,7 @@ for i = 1:2
     
     %init from eqm i've already solved for
     kval = 8.75;
-    lamval = .6221;
+    lamval = 0;
     ll = .25; lh = 1;
     
     DIST = max(kDist,gDist);
@@ -146,7 +146,7 @@ for i = 1:2
                     cap_inc_mu;
             end
     
-            G = sum(sum(Tmu(:,:,i).*adistr(:,:)));
+%            G = sum(sum(Tmu(:,:,i).*adistr(:,:)));
     
             %prepare for VFI
             terms = struct('beta', beta, ...
@@ -156,9 +156,9 @@ for i = 1:2
                 'lgrid', lgrid, ...
                 'pil', pil, ...
                 'lamval', lamval, ...
-                'captax', captax, ...
-                'tau', tgrid(i), ...
-                'G', G, ...
+                'captax', zeros(1,nl), ...
+                'tau', 0, ...
+                'G', 0, ...
                 'p', p, ...
                 'K', kagg, ...
                 'L', growth_lagg, ...
@@ -167,11 +167,11 @@ for i = 1:2
         
             fprintf("Solving value function:\n")
     
-            [V, G, EV] = HH.solve(nl, na, terms, vTol);
+            [V, G, ~, EV] = HH.solve(nl, na, terms, vTol);
          
     
             fprintf("\tSolving asset distribution:\n")
-            [adistr, kagg] = HH.getDist(G, amu, agrid, pil);
+            [adistr, kagg] = HH.getDist(G, amu, agrid, pil, true);
         
     %         % CONDENSE DISTR
             acond = compute.condense(adistr, amu, agrid);
@@ -180,10 +180,10 @@ for i = 1:2
         
             if kdist > 0
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(kdist))
-                kl = (kval+kl)/2;
+                kl = (kval*2+kl)/3;
             else
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too high.\n", abs(kdist))
-                kh = (kval+kh)/2;
+                kh = (kval*2+kh)/3;
             end
         
             kDist = abs(kdist);  
@@ -218,12 +218,12 @@ for i = 1:2
     newdir = strcat("../d/", folname);
     cd(newdir)
 
-    filename = strcat("results_t",sprintf('%0.4f', tgrid(i)), ...
+    filename = strcat("results_t",sprintf('%0.4f', 0), ...
         "_eta", sprintf('%0.4f', eta(i)), ".mat");
     save(filename, 'adistr', "G","V", "wage", "r", "kagg", ...
-        "lamval", "eta", 'tgrid')
+        "lamval", "eta", 'tgrid', 'growth_lagg', 'delta', 'alpha')
 
-    filename = strcat("terms_struct_t", sprintf('%0.4f', tgrid(i)), ...
+    filename = strcat("terms_struct_t", sprintf('%0.4f', 0), ...
         "_eta", sprintf('%0.4f', eta(i)), ".mat");
     save(filename, "terms")
 

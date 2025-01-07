@@ -15,24 +15,25 @@ addpath(genpath(pwd));
 
 cd ..\d\liberalism_populism
 
-load results_t0.1500_eta1.0100.mat
+load results_t0.0000_eta1.0000.mat
 
 VP = V;
 GP = G;
 adistrP = adistr;
 rP = r;
+lP = growth_lagg;
 
-load terms_struct_t0.1500_eta1.0000.mat
+load terms_struct_t0.0000_eta1.0000.mat
 termsP = terms;
 
-load results_t0.0500_eta1.0500.mat
-
+load results_t0.0000_eta1.1000.mat
 VL = V;
 GL = G;
 adistrL = adistr;
 rL = r;
+lL = growth_lagg;
 
-load terms_struct_t0.0500_eta1.1000.mat
+load terms_struct_t0.0000_eta1.1000.mat
 termsL = terms;
 
 load results_transition_t0.0500_eta1.1000.mat
@@ -55,14 +56,16 @@ cd ../../p
 
 %lagg will change; first period and then the growth rate changes, 
 % which means new prices for everything
+lt = repelem(lL, 500);
 
-lP=1.2145; lL = 1.3359; % pulling these manually bc i forgot to save them
+r0 = rP;
+r1 = rL;
 
-lt = [repelem(lP, 25), repelem(lL, 200)];
+alpha = 0.36; delta = 0.06;
 
-rstart = rP;
-rend = rL;
+terms.alpha = alpha;
+terms.delta = delta;
 
-kst = ((rstart+delta)/alpha)^(1/(alpha-1))*lP;
-k0 = ((rend+delta)/alpha)^(1/(alpha-1))*lL;
+lambda = 0.9;
 
+transition(r0, r1, lt, terms, dTol, lambda)

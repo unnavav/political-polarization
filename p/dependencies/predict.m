@@ -25,6 +25,37 @@ classdef predict
             zinds = izsim;
         end
 
+        function [rt] = transition(r0, r1, lt, terms, lambda, dTol)
+            
+            alpha = terms.alpha;
+            delta = terms.delta;
+
+            agrid = terms.agrid;
+            lgrid = terms.lgrid;
+            pil = terms.pil;
+
+            T = length(lt);
+            rtguess = linspace(r0, r1, T);
+            wtguess = aiyagari.getW(rtguess, alpha, delta);
+
+            % initalizing storage arrays
+            Garray = cell(T,1);
+            Varray = cell(T,1);
+
+            % solving final period value function
+            [G,V,~,~] = HH.solve(length(lgrid), length(agrid), terms, dTol);
+            Garray(T) = G;
+            Varray(T) = V;
+
+            for t = T-1:1
+
+                Vpr = Varray(t+1);
+                
+
+            end
+
+        end
+
         %% perfect foresight
 
         function [zt, yt, ct, kt] = perfectForesight(zt, kst, k0, lambda, params,dTol)

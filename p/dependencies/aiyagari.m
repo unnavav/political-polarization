@@ -22,5 +22,12 @@ classdef aiyagari
             end
         end
 
+        function w = getW(r, alpha, delta)
+
+            w = r+delta;
+            w = w./alpha;
+            w = w.^(alpha/(1-alpha));
+            w = w.*(1-alpha);
+        end
     end
 end
