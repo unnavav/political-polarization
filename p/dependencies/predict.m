@@ -26,7 +26,9 @@ classdef predict
         end
 
         function [rt] = transition(r0, r1, lt, terms, lambda, dTol)
-            
+     
+            verbose = false;
+
             alpha = terms.alpha;
             delta = terms.delta;
 
@@ -34,24 +36,86 @@ classdef predict
             lgrid = terms.lgrid;
             pil = terms.pil;
 
+            nl = length(lgrid); na = length(agrid);
+            amu = linspace(min(agrid), max(agrid), na*10);
+
             T = length(lt);
-            rtguess = linspace(r0, r1, T);
-            wtguess = aiyagari.getW(rtguess, alpha, delta);
+            rt = linspace(r0, r1, T);
+            wt = aiyagari.getW(rtguess, alpha, delta);
+            
+            impliedK = (rt + delta)/alpha;
+            impliedK = impliedK.^(1/(alpha-1));
+            impliedK = impliedK.*lt;
+            Kguess = impliedK;
 
             % initalizing storage arrays
             Garray = cell(T,1);
             Varray = cell(T,1);
+            Farray = cell(T,1);
 
             % solving final period value function
-            [G,V,~,~] = HH.solve(length(lgrid), length(agrid), terms, dTol);
-            Garray(T) = G;
-            Varray(T) = V;
+            terms.r = rt(T);
+            terms.w = wt(T);
+            [G,V,~,~] = HH.solve(nl, na, terms, dTol, verbose);
+            Garray{T,1} = G;
+            Varray{T,1} = V;
+            [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
+            Kguess(T) = Kagg;
+            Farray{T,1} = adistr;
 
-            for t = T-1:1
+            % steady state in period 1
+            terms.r = rt(1);
+            terms.w = wt(1);
+            [G,V,~,~] = HH.solve(nl, na, terms, dTol, verbose);
+            Garray{1,1} = G;
+            Varray{1,1} = V;
+            [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
+            Kguess(1) = Kagg;
+            Farray{1,1} = adistr;
 
-                Vpr = Varray(t+1);
-                
 
+            DIST = 10;
+            iter_ct = 1;
+
+            while DIST > dTol
+                 
+                fprintf("_Iteration %i_\n", iter_ct);
+                for t = (T-1):-1:2
+    
+%                     if mod(t,50) == 0
+%                         disp(t)
+%                     end
+                    Vpr = Varray{t+1};
+                    localterms = terms;
+                    localterms.r = rt(t);
+                    localterms.w = wt(t);
+                    [V, G,~] = HH.solve(nl, na, localterms, dTol/10, verbose);
+    
+                    Varray{t} = V;
+                    Garray{t} = G;
+                    mesh(G);
+                end
+    
+                for t = 2:T-1
+                    
+%                     if mod(t,50) == 0
+%                         disp(t)
+%                     end
+                    [Farray{t}, Kguess(t)] = HH.transitDistr(Garray{t}, ...
+                        Farray{t-1}, amu, agrid, pil);
+    
+                end
+
+                DIST = compute.dist(Kguess, impliedK,1);
+                fprintf("||K - K'|| = %2.4f\n", DIST);
+
+                rguess = alpha.*(Kguess./lt).^(alpha - 1) - delta;
+
+                rt = (1-lambda)*rt + lambda*rguess;
+                impliedK = (rt + delta)/alpha;
+                impliedK = impliedK.^(1/(alpha-1));
+                impliedK = impliedK.*lt;
+                iter_ct = iter_ct + 1;
             end
 
         end

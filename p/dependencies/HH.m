@@ -8,7 +8,7 @@ classdef HH
         %   - ubonus
         %   - tau
         %   - g
-        function [V, G, C, V0] = solve(nl, na, terms, vTol)
+        function [V, G, C, V0] = solve(nl, na, terms, vTol, verbose)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -121,13 +121,17 @@ classdef HH
 
             end
 
-        
-            fprintf("\n\tIteration %i: ||TV - V|| = %4.6f" + ...
-                "\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
+            if verbose
+                fprintf("\n\tIteration %i: ||TV - V|| = %4.6f" + ...
+                    "\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
+            end
 
         end
 
-        function [V, G, C] = backsolve(nl, na, Vpr, terms, vTol, verbose)
+        % the issue is that I can't use EGM to solve, I need to use GSS.
+        % sad reacts. So implementing that here, given that E0 is already
+        % set, so I can get smooth policy functions.
+        function [V, G] = backsolve(nl, na, Vpr, terms, vTol, verbose)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -148,8 +152,6 @@ classdef HH
             TG = G;
             TV = V; 
 
-            V0 = zeros(nl, na);
-
             % set up V so that it doesn't start empty
             scale = .25;
             for ia = 1:na
@@ -161,85 +163,31 @@ classdef HH
                 end
             end
             
-            %init expected vals
+            % expected vals
             for ia = 1:na
                 for il = 1:nl
                     V0(il, ia) = pil(il,:)*Vpr(:,ia);
                 end
             end
-
-            dist = 1e5;
-            iter_ct = 1;
             
-            while dist > vTol
-                        
-                %endogrid choice
-                endoK = zeros(size(V));
-                for ia = 1:na
-                    kpr = agrid(ia);
-                    for il = 1:nl
-                        l = lgrid(il);
-                        D = egm.solveD(V0(il,:), ia, agrid);
+            % get best capital choice from V, EV using GSS
+            for ia = 1:na
 
-                        endoK(il, ia) = ((beta*D)^(-1) + kpr - w*l +...
-                            gov.tax(w*l, lamval, tau) - g(1) + ...
-                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
-                    end
+                for il = 1:nl
+                    y = w*lgrid(il) + (1+r*agrid(ia));
+                    Cvals = V0(il, :);
+                    params = [y beta sigma];
+
+                    [v, g, ~] = compute.gss(Cvals, params, agrid, vTol/1e3);
+
+                    V(il, ia) = v;
+                    G(il, ia) = g;
                 end
-            
-                %linterpolate decision rule
-                for ia = 1:na
-                    k = agrid(ia);
-                    for il = 1:nl
-                        lkvals = endoK(il, :);
-                        
-                        if k < lkvals(1)
-                            G(il, ia) = agrid(1);
-                        else 
-                            [ix, we] = compute.weight(lkvals, k);
-                            kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
-                            G(il, ia) = max(agrid(1), kpr);
-                        end
-                    end
-                end
-            
-                C = endoK;
-                for ia = 1:na
-                    for il = 1:nl
-                        l = lgrid(il);
-
-                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau) ...
-                            + g - G(il, ia) - r*(1-captax(il))*phi;
-
-                        C(il, ia) = max(1e-10, c);
-
-                        [ix, we] = compute.weight(agrid, G(il, ia));
-                        ev = we*V0(il, ix) + (1-we)*V0(il, ix+1);
-                        TV(il, ia) = log(c) + beta*ev;
-                    end
-                end
-            
-                dist = compute.dist(TV, V, 2);
-                kdist = compute.dist(TG, G, 2);
-            
-%                 if mod(iter_ct, 50) == 0
-%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
-%                 end
-            
-                iter_ct = iter_ct + 1;
-            
-                V = TV;
-                TG = G;
-
-                for ia = 1:na
-                    for il = 1:nl
-                        V0(il, ia) = pil(il,:)*Vpr(:,ia);
-                    end
-                end
-
             end
-
+        
+            dist = compute.dist(TV, V, 2);
+            kdist = compute.dist(TG, G, 2);
+        
             if verbose
                 fprintf("\n\tIteration %i: ||TV - V|| = %4.6f" + ...
                     "\t||TG - G|| = %4.6f\n", iter_ct, dist, kdist);
@@ -433,14 +381,11 @@ classdef HH
             y = params(1);
             beta = params(2);
             sigma = params(3);
-            ubonus = params(4);
 
-            if y-apr <= 0
-                utils = -100000;
-            elseif sigma == 1
-                utils = log(y-apr) + ubonus + beta*vc;
+            if sigma == 1
+                utils = log(y-apr) + beta*vc;
             else
-                utils = ((y-apr)^(1-sigma))/(1-sigma) + ubonus + beta*vc;
+                utils = ((y-apr)^(1-sigma))/(1-sigma) + beta*vc;
             end
         end
     end

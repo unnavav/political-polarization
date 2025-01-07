@@ -26,7 +26,7 @@ classdef aiyagari
 
             w = r+delta;
             w = w./alpha;
-            w = w.^(alpha/(1-alpha));
+            w = w.^(alpha/(alpha-1));
             w = w.*(1-alpha);
         end
     end

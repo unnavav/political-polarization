@@ -4,8 +4,10 @@ classdef compute
             ni = max(size(searchgrid));
             r = (3-sqrt(5))/2;
 
+            y = params(1);
+            
             a = searchgrid(1);
-            b = searchgrid(ni);
+            b = min(searchgrid(ni), y); % Ensure c > 0;
             c = (1-r)*a + r*b;
             d = r*a + (1-r)*b;
 
@@ -40,12 +42,12 @@ classdef compute
                     fc = -HH.util(c, params, vc);
                     v = [v; c fc];
                 end
-% 
+
 %                 fprintf("Results of iteration %i: [a c d b] = [%4.4f %4.4f %4.4f %4.4f]\n", ...
 %                     iter_ct, a, c, d, b);
 % 
 %                 disp(fc);
-% % 
+
                 iter_ct = iter_ct+1;
             end
 
