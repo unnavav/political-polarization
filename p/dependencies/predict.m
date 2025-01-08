@@ -56,7 +56,7 @@ classdef predict
             % solving final period value function
             terms.r = rt(T);
             terms.w = wt(T);
-            [G,V,~,~] = HH.solve(nl, na, terms, dTol, verbose);
+            [V,G,~,~] = HH.solve(nl, na, terms, dTol, verbose);
             Garray{T,1} = G;
             Varray{T,1} = V;
             [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
@@ -66,13 +66,12 @@ classdef predict
             % steady state in period 1
             terms.r = rt(1);
             terms.w = wt(1);
-            [G,V,~,~] = HH.solve(nl, na, terms, dTol, verbose);
+            [V,G,~,~] = HH.solve(nl, na, terms, dTol, verbose);
             Garray{1,1} = G;
             Varray{1,1} = V;
             [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
             Kguess(1) = Kagg;
             Farray{1,1} = adistr;
-
 
             DIST = 10;
             iter_ct = 1;
@@ -82,14 +81,15 @@ classdef predict
                 fprintf("_Iteration %i_\n", iter_ct);
                 for t = (T-1):-1:2
     
-%                     if mod(t,50) == 0
-%                         disp(t)
-%                     end
+                    if mod(t,50) == 0
+                        fprintf("T = %i...\n", t)
+                    end
+                    
                     Vpr = Varray{t+1};
                     localterms = terms;
                     localterms.r = rt(t);
                     localterms.w = wt(t);
-                    [V, G,~] = HH.solve(nl, na, localterms, dTol/10, verbose);
+                    [V, G, ~] = HH.solve(nl, na, localterms, dTol/10, verbose);
     
                     Varray{t} = V;
                     Garray{t} = G;
@@ -98,9 +98,9 @@ classdef predict
     
                 for t = 2:T-1
                     
-%                     if mod(t,50) == 0
-%                         disp(t)
-%                     end
+                    if mod(t,50) == 0
+                        fprintf("T = %i...\n",t)
+                    end
                     [Farray{t}, Kguess(t)] = HH.transitDistr(Garray{t}, ...
                         Farray{t-1}, amu, agrid, pil);
     
@@ -111,7 +111,7 @@ classdef predict
 
                 rguess = alpha.*(Kguess./lt).^(alpha - 1) - delta;
 
-                rt = (1-lambda)*rt + lambda*rguess;
+                rt(2:T) = (1-lambda)*rt(2:T) + lambda*rguess(2:T);
                 impliedK = (rt + delta)/alpha;
                 impliedK = impliedK.^(1/(alpha-1));
                 impliedK = impliedK.*lt;
