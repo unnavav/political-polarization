@@ -23,6 +23,15 @@ adistrP = adistr;
 rP = r;
 lP = growth_lagg;
 
+mkdir("results_t0.0000_eta1.0000")
+cd results_t0.0000_eta1.0000\
+writematrix(V,"V.csv");
+writematrix(G,"G.csv");
+writematrix(adistr, "adistr.csv");
+writematrix(r, "r.csv");
+writematrix(growth_lagg, "l.csv");
+cd ..
+
 load terms_struct_t0.0000_eta1.0000.mat
 termsP = terms;
 
@@ -32,6 +41,15 @@ GL = G;
 adistrL = adistr;
 rL = r;
 lL = growth_lagg;
+
+mkdir("results_t0.0000_eta1.1000")
+cd results_t0.0000_eta1.1000\
+writematrix(V,"V.csv");
+writematrix(G,"G.csv");
+writematrix(adistr, "adistr.csv");
+writematrix(r, "r.csv");
+writematrix(growth_lagg, "l.csv");
+cd ..
 
 load terms_struct_t0.0000_eta1.1000.mat
 termsL = terms;
@@ -66,6 +84,17 @@ alpha = 0.36; delta = 0.06;
 terms.alpha = alpha;
 terms.delta = delta;
 
-lambda = 0.9;
+lambda = 0.5;
 
 transition(r0, r1, lt, terms, dTol, lambda)
+
+lt = repelem(lP, 500);
+
+r0 = rL;
+r1 = rP;
+
+lambda = 0.5;
+
+transition(r0, r1, lt, terms, dTol, lambda)
+
+save transition_L_to_P

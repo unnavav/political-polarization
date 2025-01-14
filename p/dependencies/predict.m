@@ -25,7 +25,7 @@ classdef predict
             zinds = izsim;
         end
 
-        function [rt] = transition(r0, r1, lt, terms, lambda, dTol)
+        function [rt, wt, impliedK] = transition(r0, r1, lt, terms, lambda, dTol)
      
             verbose = false;
 
@@ -41,7 +41,7 @@ classdef predict
 
             T = length(lt);
             rt = linspace(r0, r1, T);
-            wt = aiyagari.getW(rtguess, alpha, delta);
+            wt = aiyagari.getW(rt, alpha, delta);
             
             impliedK = (rt + delta)/alpha;
             impliedK = impliedK.^(1/(alpha-1));
@@ -112,6 +112,7 @@ classdef predict
                 rguess = alpha.*(Kguess./lt).^(alpha - 1) - delta;
 
                 rt(2:T) = (1-lambda)*rt(2:T) + lambda*rguess(2:T);
+                wt = aiyagari.getW(rt, alpha, delta);
                 impliedK = (rt + delta)/alpha;
                 impliedK = impliedK.^(1/(alpha-1));
                 impliedK = impliedK.*lt;
