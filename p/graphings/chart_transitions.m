@@ -94,38 +94,63 @@ hold off
 
 %% savings rules
 
-tiledlayout(3,1)
+tiledlayout(1,2)
 
 nexttile
 rule = Garray{1};
-rule = rule([1 4 7], :);
+nmu = length(amu);
+rule2500 = zeros(nl, nmu);
+
+for im = 1:nmu
+    kval = amu(im);
+    for il = 1:nl  
+        [ix, we] = compute.weight(agrid, kval);
+            
+        %split between rep and dem capital choices
+        kdval = rule(il,ix)*we + rule(il,ix+1)*(1.0 - we);
+
+        rule2500(il, im) = kdval;
+    end
+end
+
+rule = rule2500([1 4 7], :);
+rule = rule(:,1:25:2500)';
 
 hold on
-plot(rule', "LineWidth", 1.0)
+plot(rule, "LineWidth", 1.0)
 title("Savings Decision Rule Before Shock (t=0)")
 xlabel("Assets")
-xticklabels(xticks)
-hold off
-
-nexttile
-rule = Garray{2};
-rule = rule([1 4 7], :);
-
-hold on
-plot(rule, "LineWidth", 1.0, ...
-    "Color",[0.761 0.659 0.243])
-title("Savings Decision Rule at Shock (t=1)")
-xlabel("Assets")
-xticklabels(xticks)
+plot(1:100, 1:100, '--', "Color", [0 0 0])
+ylim([0 100])
 hold off
 
 nexttile
 rule = Garray{T};
-rule = rule([1 4 7], :);
+rule2500 = zeros(nl, nmu);
+
+for im = 1:nmu
+    kval = amu(im);
+    for il = 1:nl  
+        [ix, we] = compute.weight(agrid, kval);
+            
+        %split between rep and dem capital choices
+        kdval = rule(il,ix)*we + rule(il,ix+1)*(1.0 - we);
+
+        rule2500(il, im) = kdval;
+    end
+end
+
+rule = rule2500([1 4 7], :);
+rule = rule(:,1:25:2500)';
 
 hold on
 plot(rule, "LineWidth", 1.0)
 title("Savings Decision Rule In New Steady State (t=T)")
 xlabel("Assets")
-xticklabels(xticks)
+plot(1:100, 1:100, '--', "Color", [0 0 0])
+ylim([0 100])
 hold off
+
+hL = legend('\epsilon = 0.25', '\epsilon = 1.00', '\epsilon = 3.94', ...
+    ['45' char(176) 'line']);
+hL.Layout.Tile = 'East';
