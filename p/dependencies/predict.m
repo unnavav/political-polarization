@@ -56,7 +56,7 @@ classdef predict
             % solving final period value function
             terms.r = rt(T);
             terms.w = wt(T);
-            [V,G,~,~] = HH.solve(nl, na, terms, dTol, verbose);
+            [V,G,~,~] = HH.solve(nl, na, terms, 1e-8, verbose);
             Garray{T,1} = G;
             Varray{T,1} = V;
             [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
@@ -66,7 +66,7 @@ classdef predict
             % steady state in period 1
             terms.r = rt(1);
             terms.w = wt(1);
-            [V,G,~,~] = HH.solve(nl, na, terms, dTol, verbose);
+            [V,G,~,~] = HH.solve(nl, na, terms, 1e-8, verbose);
             Garray{1,1} = G;
             Varray{1,1} = V;
             [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
@@ -78,22 +78,26 @@ classdef predict
 
             while DIST > dTol
                  
+                if DIST > 1
+                    vTol = 1e-4;
+                else
+                    vTol = 1e-6;
+                end
                 fprintf("_Iteration %i_\n", iter_ct);
                 for t = (T-1):-1:2
     
-                    if mod(t,50) == 0
-                        fprintf("T = %i...\n", t)
+                    if mod(t,20) == 0
+                        fprintf("T = %i... ", t)
                     end
                     
                     Vpr = Varray{t+1};
                     localterms = terms;
                     localterms.r = rt(t);
                     localterms.w = wt(t);
-                    [V, G, ~] = HH.solve(nl, na, localterms, dTol/10, verbose);
+                    [V, G, ~] = HH.solve(nl, na, localterms, vTol, verbose);
     
                     Varray{t} = V;
                     Garray{t} = G;
-                    mesh(G);
                 end
     
                 for t = 2:T-1
@@ -110,8 +114,9 @@ classdef predict
                 fprintf("||K - K'|| = %2.4f\n", DIST);
 
                 rguess = alpha.*(Kguess./lt).^(alpha - 1) - delta;
+                rguess(T) = rt(T);
 
-                rt(2:T) = (1-lambda)*rt(2:T) + lambda*rguess(2:T);
+                rt(2:T-1) = (1-lambda)*rt(2:T-1) + lambda*rguess(2:T-1);
                 wt = aiyagari.getW(rt, alpha, delta);
                 impliedK = (rt + delta)/alpha;
                 impliedK = impliedK.^(1/(alpha-1));
@@ -119,6 +124,7 @@ classdef predict
                 iter_ct = iter_ct + 1;
             end
 
+            save transition_P_to_L_jan2025
         end
 
         %% perfect foresight
@@ -131,7 +137,7 @@ classdef predict
             sigma = params(4);
             L = params(5);
 
-            ist = delta*kst;
+            ist = delta*kstd;
             cst = kst^alpha - ist;
 
             T = size(zt, 2);

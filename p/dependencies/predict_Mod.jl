@@ -5,6 +5,7 @@ include("aiyagari_Mod.jl")
 using .HH
 using .aiyagari
 using LinearAlgebra
+using CSV, Printf
 
 export simz, transition, perfectForesight
 
@@ -33,6 +34,7 @@ end
 
 function transition(r0, r1, lt, terms, lambda, dTol)
 	verbose = false
+	lt = vcat(vec.(lt)...)
 
 	alpha = terms["alpha"]
 	delta = terms["delta"]
@@ -55,7 +57,10 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 	impliedK = (impliedK)./ alpha
 	impliedK = impliedK .^ (1 / (alpha - 1))
 	impliedK = impliedK .* lt
-	Kguess = impliedK
+	impliedK = vcat(impliedK...)
+	Kguess = zeros(length(impliedK))
+
+	println(typeof(Kguess))
 
 	# initializing storage arrays
 	Garray = Vector{Any}(undef, T)
@@ -87,6 +92,7 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 
 	while DIST > dTol
 		println("_Iteration $iter_ct")
+		println("Backward solving...")
 		for t = T-1:-1:2
 			if t % 50 == 0
 				println("T = $t...")
@@ -102,6 +108,7 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 			Garray[t] = G
 		end
 
+		println("Forward solving...")
 		for t = 2:T-1
 			if t % 50 == 0
 				println("T = $t...")
@@ -109,17 +116,22 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 			Farray[t], Kguess[t] = HH.transitDistr(Garray[t], Farray[t-1], amu, agrid, pil)
 		end
 
+		println(Kguess)
+		println(impliedK)
 		DIST = LinearAlgebra.norm(Kguess .- impliedK, 1)
-		println("||K - K'|| = $DIST")
+		println(@sprintf("||K - K'|| = %2.4f",DIST))
 
-		print(size(Kguess))
-		print(size(lt))
-		rguess = alpha .* (Kguess ./ lt) .^ (alpha - 1) - delta
+		rguess = alpha .* (Kguess ./ lt) .^ (alpha - 1) .- delta
+		# kdf = DataFrame(K = vec(Kguess))  # Flatten Kguess to a vector
+		# ldf = DataFrame(L = lt)  # Create a DataFrame from lt
+		# CSV.write("K.csv",kdf)
+		# CSV.write("lt.csv",ldf)
+		rguess = Kguess' ./ lt'
 
-		rt[2:T] = (1 - lambda) .* rt[2:T] + lambda .* rguess[2:T]
+		rt[2:T] = (1 - lambda) .* rt[2:T] .+ lambda .* rguess[2:T]
 		wt = aiyagari.getW.(rt, alpha, delta)
-		impliedK = (rt + delta) / alpha
-		impliedK = impliedK .^ (1 / (alpha - 1))
+		impliedK = (rt .+ delta) ./ alpha
+		impliedK = impliedK .^ (1 ./ (alpha - 1))
 		impliedK = impliedK .* lt
 		iter_ct += 1
 	end

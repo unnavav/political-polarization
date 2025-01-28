@@ -2,7 +2,6 @@ module HH
 
 export solve, backsolve, getDist, transitDistr, map, util
 
-
 include("egm_Mod.jl")
 include("gov_Mod.jl")
 include("compute_Mod.jl")
@@ -10,7 +9,7 @@ using .egm
 using .gov
 using .compute
 
-using LinearAlgebra
+using LinearAlgebra, Printf
 
 function solve(nl, na, terms, vTol, verbose)
 	beta = terms["beta"]
@@ -274,16 +273,19 @@ function getDist(G, amu, agrid, pil, verbose)
 		println(s)
 	end
 
-	distrA2500 = dropdims(sum(mu, dims = 2), dims = 2)
-	kagg = amu * distrA2500'
+	distrA2500 = dropdims(sum(mu, dims = 1), dims = 1)
+	kagg = dot(collect(amu), distrA2500')
+	# println(@sprintf("Kagg = %1.4f", kagg))
+	# println(@sprintf("sum(mu) = %1.4f", sum(sum(mu))))
 
 	return mu, kagg
 end
 
 function transitDistr(G, mu, amu, agrid, pil)
+	println("Hello from transitDistr")
 	nl, np = size(G)
 	nmu = size(amu)[1]
-	mu = zeros(nl, nmu)
+	mu = ones(size(mu)) * (1 / (nmu * nl))
 
 	# nomenclature: ixagrid is indices for HH a for both parties.
 	ixgrid = zeros(nl, nmu)
@@ -306,6 +308,7 @@ function transitDistr(G, mu, amu, agrid, pil)
 		end
 	end
 
+	ixgrid = round.(Int,ixgrid)
 	mu1 = zeros(size(mu))
 
 	for im = 1:nmu
@@ -334,13 +337,16 @@ function transitDistr(G, mu, amu, agrid, pil)
 		end
 	end
 
-	distrA2500 = dropdims(sum(mu, dims = 2), dims = 2)
-	kagg = amu * distrA2500'
+	
+	distrA2500 = sum(mu, dims = 1)
+	kagg = dot(collect(amu), distrA2500')
+	# println(@sprintf("Kagg = %1.4f", kagg))
+	# println(@sprintf("sum(mu) = %1.4f", sum(sum(mu))))
 
 	return mu, kagg
 end
 
-function map(VOTES, amu, agrid, adistr, pctDem)
+function mapVotes(VOTES, amu, agrid, adistr, pctDem)
 	nl, np, nm = size(adistr)
 	ixgrid = zeros(nm)
 	wegrid = ixgrid

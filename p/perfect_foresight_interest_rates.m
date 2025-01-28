@@ -74,27 +74,32 @@ cd ../../p
 
 %lagg will change; first period and then the growth rate changes, 
 % which means new prices for everything
-lt = repelem(lL, 500);
+lt = [lP repelem(lL, T-1)];
 
 r0 = rP;
 r1 = rL;
 
-alpha = 0.36; delta = 0.06;
+alpha = 0.36; delta = 0.06;                                                                                                                                                                                                                                                                                                                                                                                                                              
 
 terms.alpha = alpha;
 terms.delta = delta;
 
-lambda = 0.5;
+lambda = 0.3;
 
 transition(r0, r1, lt, terms, dTol, lambda)
 
-lt = repelem(lP, 500);
+
 
 r0 = rL;
 r1 = rP;
 
-lambda = 0.5;
+rtest = 0.0379;
+r1 = rtest;
+ltest =  1.2198;
+lt = [lL repelem(lP, T-1)];
 
-transition(r0, r1, lt, terms, dTol, lambda)
+lambda = 0.3;
 
-save transition_L_to_P
+[rt, wt, Kt] = transition(r0, r1, lt, terms, dTol, lambda);
+
+save transition_L_to_P_jan2025

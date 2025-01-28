@@ -81,16 +81,18 @@ lamval = (lh + ll)/2; % people are really reactive to taxes
 adj = 1/3;
 
 %party tax regimes
-% tgrid = [0 .2]; 
-tgrid = [.15 .05]; 
+tgrid = [0 .2]; 
+% tgrid = [.15 .05]; 
 eta = [1.00 1.1];
 
 p = 1;
 
-captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
+% captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
 % captax = linspace(0, .20, nl);
 % captax = repelem(.15, nl);
+% captax = repelem(0, nl);
+captax = repelem(0, nl);
 goal = .3652; % IMF for US govt spending (G/Y)
 
 G = [0 0];
@@ -167,7 +169,7 @@ for i = 1:2
         
             fprintf("Solving value function:\n")
     
-            [V, G, ~, EV] = HH.solve(nl, na, terms, vTol);
+            [V, G, ~, EV] = HH.solve(nl, na, terms, vTol, false);
          
     
             fprintf("\tSolving asset distribution:\n")
@@ -180,10 +182,10 @@ for i = 1:2
         
             if kdist > 0
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(kdist))
-                kl = (kval*2+kl)/3;
+                kl = (kval+kl)/2;
             else
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too high.\n", abs(kdist))
-                kh = (kval*2+kh)/3;
+                kh = (kval+kh)/2;
             end
         
             kDist = abs(kdist);  

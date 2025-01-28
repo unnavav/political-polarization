@@ -1,6 +1,7 @@
+addpath(genpath(pwd));
 cd ../d
 
-load transition_results_jan2025
+load transition_L_to_P_jan2025
 
 T = length(wt);
 lag = 10;
@@ -47,7 +48,7 @@ hold off
 
 %% savings distributions
 
-xticks = [0 amu([100:100:1000])];
+xticks = [0 amu(100:100:1000)];
 xticks = round(xticks, 0);
 
 tiledlayout(3,1)
@@ -150,6 +151,99 @@ xlabel("Assets")
 plot(1:100, 1:100, '--', "Color", [0 0 0])
 ylim([0 100])
 hold off
+
+hL = legend('\epsilon = 0.25', '\epsilon = 1.00', '\epsilon = 3.94', ...
+    ['45' char(176) 'line']);
+hL.Layout.Tile = 'East';
+
+%% a' - a rules
+
+tiledlayout(1,3)
+
+nexttile
+rule = Garray{1};
+nmu = length(amu);
+rule2500 = zeros(nl, nmu);
+
+for im = 1:nmu
+    kval = amu(im);
+    for il = 1:nl  
+        [ix, we] = compute.weight(agrid, kval);
+            
+        %split between rep and dem capital choices
+        kdval = rule(il,ix)*we + rule(il,ix+1)*(1.0 - we) - kval;
+
+        rule2500(il, im) = kdval;
+    end
+end
+
+rule = rule2500([1 4 7], :);
+rule = rule(:,1:25:2500)';
+
+hold on
+plot(rule, "LineWidth", 1.0)
+title("Investment Decision Rule Before Shock (t=0)")
+xlabel("a")
+ylabel("a' - a")
+plot(0:4, 0:4, '--', "Color", [0 0 0])
+hold off
+
+nexttile
+rule = Garray{2};
+nmu = length(amu);
+rule2500 = zeros(nl, nmu);
+
+for im = 1:nmu
+    kval = amu(im);
+    for il = 1:nl  
+        [ix, we] = compute.weight(agrid, kval);
+            
+        %split between rep and dem capital choices
+        kdval = rule(il,ix)*we + rule(il,ix+1)*(1.0 - we)-kval;
+
+        rule2500(il, im) = kdval;
+    end
+end
+
+rule = rule2500([1 4 7], :);
+rule = rule(:,1:25:2500)';
+
+hold on
+plot(rule, "LineWidth", 1.0)
+title("Investment Decision Rule at Shock (t=1)")
+xlabel("a")
+ylabel("a' - a")
+plot(0:4, 0:4, '--', "Color", [0 0 0])
+hold off
+
+nexttile
+rule = Garray{T};
+nmu = length(amu);
+rule2500 = zeros(nl, nmu);
+
+for im = 1:nmu
+    kval = amu(im);
+    for il = 1:nl  
+        [ix, we] = compute.weight(agrid, kval);
+            
+        %split between rep and dem capital choices
+        kdval = rule(il,ix)*we + rule(il,ix+1)*(1.0 - we)-kval;
+
+        rule2500(il, im) = kdval;
+    end
+end
+
+rule = rule2500([1 4 7], :);
+rule = rule(:,1:25:2500)';
+
+hold on
+plot(rule, "LineWidth", 1.0)
+title("Investment Decision Rule in New Steady State (t=T)")
+xlabel("a")
+ylabel("a' - a")
+plot(0:4, 0:4, '--', "Color", [0 0 0])
+hold off
+
 
 hL = legend('\epsilon = 0.25', '\epsilon = 1.00', '\epsilon = 3.94', ...
     ['45' char(176) 'line']);
