@@ -9,7 +9,7 @@ using .egm
 using .gov
 using .compute
 
-using LinearAlgebra, Printf
+using LinearAlgebra, Printf, StaticArrays, FLoops
 
 function solve(nl, na, terms, vTol, verbose)
 	beta = terms["beta"]
@@ -30,25 +30,22 @@ function solve(nl, na, terms, vTol, verbose)
 	G = zeros(nl, na)
 	TG = zeros(nl, na)
 	TV = zeros(nl, na)
-
 	V0 = zeros(nl, na)
+	endoK = zeros(nl, na)
+	C = zeros(nl, na)
 
 	# set up V so that it doesn't start empty
 	scale = 0.25
-	for ia = 1:na
+	@floop ThreadedEx() for ia = 1:na, il = 1:nl
 		kval = agrid[ia]
-		for il = 1:nl
-			yval = scale * (1 + r * (1 - captax[il])) * kval + w * lgrid[il] - r * phi
-			ymin = max(1e-10, yval)
-			V[il, ia] = log(ymin)
-		end
+		yval = scale * (1 + r * (1 - captax[il])) * kval + w * lgrid[il] - r * phi
+		ymin = max(1e-10, yval)
+		V[il, ia] = log(ymin)
 	end
 
 	# init expected vals
-	for ia = 1:na
-		for il = 1:nl
-			V0[il, ia] = dot(pil[il, :], V[:, ia])
-		end
+	@floop ThreadedEx() for ia = 1:na, il = 1:nl
+		V0[il, ia] = dot(pil[il, :], V[:, ia])
 	end
 
 	dist = 1e5
@@ -62,69 +59,59 @@ function solve(nl, na, terms, vTol, verbose)
 	while dist > vTol
 
 		# endogrid choice
-		endoK = zeros(size(V))
-		for ia = 1:na
+		@floop ThreadedEx() for ia = 1:na, il = 1:nl
 			kpr = agrid[ia]
-			for il = 1:nl
-				l = lgrid[il]
-				D = egm.solveD(V0[il, :], ia, agrid)
+			l = lgrid[il]
+			D = egm.solveD(V0[il, :], ia, agrid)
 
-				endoK[il, ia] = ((beta * D)^(-1) + kpr - w * l +
-					gov.tax(w * l, lamval, tau) - g[1] +
-					r * (1 - captax[il]) * phi) / (1 + r * (1 - captax[il]))
-			end
+			endoK[il, ia] = ((beta * D)^(-1) + kpr - w * l +
+				gov.tax(w * l, lamval, tau) - g[1] +
+				r * (1 - captax[il]) * phi) / (1 + r * (1 - captax[il]))
 		end
 
 		# linterpolate decision rule
-		for ia = 1:na
+		@floop ThreadedEx() for ia = 1:na, il = 1:nl
 			k = agrid[ia]
-			for il = 1:nl
-				lkvals = endoK[il, :]
+			lkvals = endoK[il, :]
 
-				if k < lkvals[1]
-					G[il, ia] = agrid[1]
-				else
-					ix, we = compute.weight(lkvals, k)
-					kpr = we * agrid[ix] + (1 - we) * agrid[ix + 1]
-					G[il, ia] = max(agrid[1], kpr)
-				end
+			if k < lkvals[1]
+				G[il, ia] = agrid[1]
+			else
+				ix, we = compute.weight(lkvals, k)
+				kpr = we * agrid[ix] + (1 - we) * agrid[ix + 1]
+				G[il, ia] = max(agrid[1], kpr)
 			end
 		end
 
-		C = endoK
-		for ia = 1:na
-			for il = 1:nl
-				l = lgrid[il]
+		@floop ThreadedEx() for ia = 1:na, il = 1:nl
+			l = lgrid[il]
 
-				c = (1 + r * (1 - captax[il])) * agrid[ia] + w * l - gov.tax(w * l, lamval, tau) +
-					g - G[il, ia] - r * (1 - captax[il]) * phi
+			tax_labor = gov.tax(w * l, lamval, tau)
+			c = (1 + r * (1 - captax[il])) * agrid[ia] + w * l - tax_labor +
+				g - G[il, ia] - r * (1 - captax[il]) * phi
+			C[il, ia] = max(1e-10, c)
 
-				C[il, ia] = max(1e-10, c)
-
-				ix, we = compute.weight(agrid, G[il, ia])
-				ev = we * V0[il, ix] + (1 - we) * V0[il, ix + 1]
-				TV[il, ia] = log(c) + beta * ev
-			end
+			ix, we = compute.weight(agrid, G[il, ia])
+			ev = we * V0[il, ix] + (1 - we) * V0[il, ix + 1]
+			TV[il, ia] = log(c) + beta * ev
 		end
 
-		dist = LinearAlgebra.norm(TV .- V, 2)
-		kdist = LinearAlgebra.norm(TG .- G, 2)
+		dist = maximum(maximum(abs.(TV .- V)))
+		kdist = norm(TG .- G, 2)
 
 		iter_ct += 1
 
-		V = TV
-		TG = G
+		V .= TV
+		TG .= G
 
-		for ia = 1:na
-			for il = 1:nl
-				V0[il, ia] = dot(pil[il, :], V[:, ia])
-			end
+		@floop ThreadedEx() for ia = 1:na, il = 1:nl
+			V0[il, ia] = dot(pil[il, :], V[:, ia])
 		end
 
 	end
 
 	# if verbose
-		println("\n\tIteration $iter_ct: ||TV - V|| = $dist\t||TG - G|| = $kdist")
+		println(@sprintf("\n\tIteration %i: ||TV - V|| = %1.8f\t||TG - G|| = %1.8f", iter_ct, dist, kdist))
 	# end
 	return V, G, V0
 
@@ -153,39 +140,32 @@ function backsolve(nl, na, Vpr, terms, vTol, verbose)
 
 	# set up V so that it doesn't start empty
 	scale = 0.25
-	for ia = 1:na
+	@floop ThreadedEx() for ia = 1:na, il = 1:nl
 		kval = agrid[ia]
-		for il = 1:nl
-			yval = scale * (1 + r * (1 - captax[il])) * kval + w * lgrid[il] - r * phi
-			ymin = max(1e-10, yval)
-			V[il, ia] = log(ymin)
-		end
+		yval = scale * (1 + r * (1 - captax[il])) * kval + w * lgrid[il] - r * phi
+		ymin = max(1e-10, yval)
+		V[il, ia] = log(ymin)
 	end
 
 	# expected vals
-	for ia = 1:na
-		for il = 1:nl
-			V0[il, ia] = pil[il, :] ⋅ Vpr[:, ia]
-		end
+	@floop ThreadedEx() for ia = 1:na, il = 1:nl
+		V0[il, ia] = pil[il, :] ⋅ Vpr[:, ia]
 	end
 
 	# get best capital choice from V, EV using GSS
-	for ia = 1:na
+	@floop ThreadedEx() for ia = 1:na, il = 1:nl
+		y = w * lgrid[il] + (1 + r * agrid[ia])
+		Cvals = V0[il, :]
+		params = [y, beta, sigma]
 
-		for il = 1:nl
-			y = w * lgrid[il] + (1 + r * agrid[ia])
-			Cvals = V0[il, :]
-			params = [y, beta, sigma]
+		v, g, ~ = compute.gss(Cvals, params, agrid, vTol / 1e3)
 
-			v, g, ~ = compute.gss(Cvals, params, agrid, vTol / 1e3)
-
-			V[il, ia] = v
-			G[il, ia] = g
-		end
+		V[il, ia] = v
+		G[il, ia] = g
 	end
 
-	dist = LinearAlgebra.norm(TV .- V, 2)
-	kdist = LinearAlgebra.norm(TG .- G, 2)
+	dist = maximum(maximum(abs.(TV .- V)))
+	kdist = norm(TG .- G, 2)
 
 	if verbose
 		println("\n\tIteration $iter_ct: ||TV - V|| = $dist\t||TG - G|| = $kdist")
@@ -210,7 +190,6 @@ function getDist(G, amu, agrid, pil, verbose)
 		ixk, wek = compute.weight(agrid, kval)
 
 		for il = 1:nl
-			# println([il im])
 
 			kdval = G[il, ixk] * wek + G[il, ixk + 1] * (1.0 - wek)
 
@@ -261,7 +240,7 @@ function getDist(G, amu, agrid, pil, verbose)
 			end
 		end
 
-		distance = LinearAlgebra.norm(mu1.-mu, 2)
+		distance = norm(mu1.-mu, 2)
 
 		iter_ct += 1
 
@@ -282,7 +261,6 @@ function getDist(G, amu, agrid, pil, verbose)
 end
 
 function transitDistr(G, mu, amu, agrid, pil)
-	println("Hello from transitDistr")
 	nl, np = size(G)
 	nmu = size(amu)[1]
 	mu = ones(size(mu)) * (1 / (nmu * nl))
@@ -298,7 +276,6 @@ function transitDistr(G, mu, amu, agrid, pil)
 		ixk, wek = compute.weight(agrid, kval)
 
 		for il = 1:nl
-			# println([il im])
 
 			kdval = G[il, ixk] * wek + G[il, ixk + 1] * (1.0 - wek)
 

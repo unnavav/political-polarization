@@ -3,6 +3,8 @@ module compute
 include("aiyagari_Mod.jl")
 using .aiyagari
 
+using StaticArrays
+
 export gss, linterpolate, getKgrid, logspace, getTauchen, weight, cubicSpline, getSplineVal, dist, condense
 
 function gss(Cvals, params, searchgrid, prec)
@@ -77,7 +79,7 @@ function getKgrid(nk, kl, kh)
 	kgrid = logspace(log(kl - kl + 1) / log(10.0), log(kh - kl + 1) / log(10.0), nk)'
 	kgrid += ones(size(kgrid)) * (kl - 1)
 	kgrid = kgrid'
-
+	
 	return kgrid
 end
 
@@ -85,6 +87,7 @@ function logspace(l, h, nx)
 	grid = logspace(log(l + -1.0 * l + 1.0) / log(10.0), log(h + -1.0 * l + 1.0) / log(10.0), nx)'
 	grid += ones(size(grid)) * (l - 1.0)
 
+	grid = SVector{nx, Float64}(grid)
 	return grid
 end
 
@@ -100,7 +103,7 @@ function getTauchen(Nz, mu, sigma, rho)
 
 	w = x_grid[2] - x_grid[1]
 
-	P_mat = zeros(Nz, Nz)
+	P_mat = MMatrix{Nz, Nz, Float64}zeros(Nz, Nz)
 
 	for r in 1:Nz
 		x_curr = x_grid[r] * rho
@@ -114,6 +117,9 @@ function getTauchen(Nz, mu, sigma, rho)
 			P_mat[r, c] = upper - lower
 		end
 	end
+
+	P_mat = SMatrix{Nz, Nz, Float64}(P_mat)
+	z_grid = SVector{Nz, Float64}(z_grid)
 
 	return P_mat, z_grid
 end

@@ -60,13 +60,13 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 	impliedK = vcat(impliedK...)
 	Kguess = zeros(length(impliedK))
 
-	println(typeof(Kguess))
 
 	# initializing storage arrays
 	Garray = Vector{Any}(undef, T)
 	Varray = Vector{Any}(undef, T)
 	Farray = Vector{Any}(undef, T)
 
+	println("Solving Final Period Value Function:")
 	# solving final period value function
 	terms["r"] = rt[T]
 	terms["w"] = wt[T]
@@ -77,6 +77,7 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 	Kguess[T] = Kagg
 	Farray[T] = adistr
 
+	println("Solving First Period Value Function:")
 	# steady state in period 1
 	terms["r"] = rt[1]
 	terms["w"] = wt[1]
@@ -90,51 +91,51 @@ function transition(r0, r1, lt, terms, lambda, dTol)
 	DIST = 10
 	iter_ct = 1
 
-	while DIST > dTol
-		println("_Iteration $iter_ct")
-		println("Backward solving...")
-		for t = T-1:-1:2
-			if t % 50 == 0
-				println("T = $t...")
-			end
+	# while (DIST > dTol) & (iter_ct < 50)
+	# 	println("\n_Iteration $iter_ct")
+	# 	println("Backward solving...")
+	# 	for t = T-1:-1:2
+	# 		if t % 50 == 0
+	# 			print("T = $t... ")
+	# 		end
 
-			Vpr = Varray[t+1]
-			localterms = terms
-			localterms["r"] = rt[t]
-			localterms["w"] = wt[t]
-			V, G, _ = HH.backsolve(nl, na, Vpr, localterms, dTol/10, verbose)
+	# 		Vpr = Varray[t+1]
+	# 		localterms = terms
+	# 		localterms["r"] = rt[t]
+	# 		localterms["w"] = wt[t]
+	# 		V, G, _ = HH.backsolve(nl, na, Vpr, localterms, dTol/10, verbose)
 
-			Varray[t] = V
-			Garray[t] = G
-		end
+	# 		Varray[t] = V
+	# 		Garray[t] = G
+	# 	end
 
-		println("Forward solving...")
-		for t = 2:T-1
-			if t % 50 == 0
-				println("T = $t...")
-			end
-			Farray[t], Kguess[t] = HH.transitDistr(Garray[t], Farray[t-1], amu, agrid, pil)
-		end
+	# 	println("\nForward solving...")
+	# 	for t = 2:T-1
+	# 		if t % 50 == 0
+	# 			print("T = $t... ")
+	# 		end
+	# 		Farray[t], Kguess[t] = HH.transitDistr(Garray[t], Farray[t-1], amu, agrid, pil)
+	# 	end
 
-		println(Kguess)
-		println(impliedK)
-		DIST = LinearAlgebra.norm(Kguess .- impliedK, 1)
-		println(@sprintf("||K - K'|| = %2.4f",DIST))
+	# 	println(Kguess)
+	# 	println(impliedK)
+	# 	DIST = max(abs(Kguess .- impliedK))
+	# 	println(@sprintf("||K - K'|| = %2.4f",DIST))
 
-		rguess = alpha .* (Kguess ./ lt) .^ (alpha - 1) .- delta
-		# kdf = DataFrame(K = vec(Kguess))  # Flatten Kguess to a vector
-		# ldf = DataFrame(L = lt)  # Create a DataFrame from lt
-		# CSV.write("K.csv",kdf)
-		# CSV.write("lt.csv",ldf)
-		rguess = Kguess' ./ lt'
+	# 	rguess = alpha .* (Kguess ./ lt) .^ (alpha - 1) .- delta
+	# 	# kdf = DataFrame(K = vec(Kguess))  # Flatten Kguess to a vector
+	# 	# ldf = DataFrame(L = lt)  # Create a DataFrame from lt
+	# 	# CSV.write("K.csv",kdf)
+	# 	# CSV.write("lt.csv",ldf)
+	# 	rguess = Kguess' ./ lt'
 
-		rt[2:T] = (1 - lambda) .* rt[2:T] .+ lambda .* rguess[2:T]
-		wt = aiyagari.getW.(rt, alpha, delta)
-		impliedK = (rt .+ delta) ./ alpha
-		impliedK = impliedK .^ (1 ./ (alpha - 1))
-		impliedK = impliedK .* lt
-		iter_ct += 1
-	end
+	# 	rt[2:T] = (1 - lambda) .* rt[2:T] .+ lambda .* rguess[2:T]
+	# 	wt = aiyagari.getW.(rt, alpha, delta)
+	# 	impliedK = (rt .+ delta) ./ alpha
+	# 	impliedK = impliedK .^ (1 ./ (alpha - 1))
+	# 	impliedK = impliedK .* lt
+	# 	iter_ct += 1
+	# end
 end
 
 function perfectForesight(zt, kst, k0, lambda, params, dTol)
