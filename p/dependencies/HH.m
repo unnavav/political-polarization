@@ -20,6 +20,7 @@ classdef HH
             captax = terms.captax;
             lamval = terms.lamval;
             tau = terms.tau;
+            p = terms.p;
 
             r = terms.r;
             w = terms.w;
@@ -127,7 +128,7 @@ classdef HH
             end
 
         end
-
+        
         % the issue is that I can't use EGM to solve, I need to use GSS.
         % sad reacts. So implementing that here, given that E0 is already
         % set, so I can get smooth policy functions.
