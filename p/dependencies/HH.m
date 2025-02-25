@@ -20,7 +20,6 @@ classdef HH
             captax = terms.captax;
             lamval = terms.lamval;
             tau = terms.tau;
-            p = terms.p;
 
             r = terms.r;
             w = terms.w;
