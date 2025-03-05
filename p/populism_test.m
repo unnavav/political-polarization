@@ -62,7 +62,7 @@ klwrbnd = (rst + delta)/(alpha);
 klwrbnd = klwrbnd/(lagg^(1-alpha));
 klwrbnd = klwrbnd^(1/(alpha-1));
 klmult = .3;
-khmult = 2;
+khmult = 6;
 
 kl = klwrbnd*klmult;
 kh = klwrbnd*khmult;
@@ -83,9 +83,9 @@ adj = 1/3;
 %party tax regimes
 tgrid = [0 .2]; 
 % tgrid = [.15 .05]; 
-eta = [1.00 1.1];
+etagrid = [1.00 1.1];
 
-p = 1;
+p = .7;
 
 % captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
@@ -97,7 +97,7 @@ goal = .3652; % IMF for US govt spending (G/Y)
 
 G = [0 0];
 
-folname = "liberalism_populism";
+folname = "detrended";
 mkdir("../d/",folname)
 
 for i = 1:2
@@ -110,7 +110,7 @@ for i = 1:2
         end 
     end
     
-    growth_lagg = lagg*eta(i);
+    eta = etagrid(i);
 
     kDist = 10;
     gDist = 10; 
@@ -134,8 +134,8 @@ for i = 1:2
             fprintf("\t Solving value function:\n")
             
             % first getting equilibrium objects like prices, govt spending, etc
-            r = alpha*(kval^(alpha - 1)*(growth_lagg^(1-alpha))) - delta;
-            wage = (1-alpha)*((kval^(alpha))*(growth_lagg^(-alpha)));
+            r = alpha*(kval/(1+eta))^(alpha - 1) - delta;
+            wage = (kval/(1+eta))^(alpha)*(1-alpha*(1+eta));
     
             wage_inc_mu = repmat(wage*lgrid, nmu,1)';
             cap_inc_mu = zeros(size(wage_inc_mu));
@@ -163,7 +163,7 @@ for i = 1:2
                 'G', 0, ...
                 'p', p, ...
                 'K', kagg, ...
-                'L', growth_lagg, ...
+                'L', 1, ...
                 'r', r, ...
                 'w', wage);
         
