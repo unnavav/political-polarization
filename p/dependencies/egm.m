@@ -1,6 +1,69 @@
 classdef egm
     methods(Static)
 
+        function [TV, G, C] = solve(nl, na, terms, V0, V)
+            
+            w = terms.w;
+            r = terms.r;
+
+            captax = terms.captax;
+            lamval = terms.lamval;
+            tau = terms.tau;
+            agrid = terms.agrid;
+            lgrid = terms.lgrid;
+            beta = terms.beta;
+            phi = 1;
+            g = terms.G;
+
+            %endogrid choice
+            endoK = zeros(size(V));
+            TV = endoK;
+            for ia = 1:na
+                kpr = agrid(ia);
+                for il = 1:nl
+                    l = lgrid(il);
+                    D = egm.solveD(V0(il,:), ia, agrid);
+
+                    endoK(il, ia) = ((beta*D)^(-1) + kpr - (w*l +...
+                        gov.tax(w*l, lamval, tau) - g(1) + ...
+                        r*(1-captax(il))*phi)/(1+r*(1-captax(il))));
+                end
+            end
+        
+            G = zeros(size(V));
+            %linterpolate decision rule
+            for ia = 1:na
+                k = agrid(ia);
+                for il = 1:nl
+                    lkvals = endoK(il, :);
+                    
+                    if k < lkvals(1)
+                        G(il, ia) = agrid(1);
+                    else 
+                        [ix, we] = compute.weight(lkvals, k);
+                        kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
+                        G(il, ia) = max(agrid(1), kpr);
+                    end
+                end
+            end
+        
+            C = endoK;
+            for ia = 1:na
+                for il = 1:nl
+                    l = lgrid(il);
+
+                    c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau) ...
+                        + g - G(il, ia) - r*(1-captax(il))*phi;
+
+                    C(il, ia) = max(1e-6, c);
+
+                    [ix, we] = compute.weight(agrid, G(il, ia));
+                    ev = we*V0(il, ix) + (1-we)*V0(il, ix+1);
+                    TV(il, ia) = log(C(il, ia)) + beta*ev;
+                end
+            end
+        end
+
         %% getting derivative of expected value function
         % inputs: EV grid
         % outputs: DEV grid

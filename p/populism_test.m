@@ -173,7 +173,7 @@ for i = 1:2
          
     
             fprintf("\tSolving asset distribution:\n")
-            [adistr, kagg] = HH.getDist(G, amu, agrid, pil, true);
+            [adistr, kagg] = HH.getDist(G, amu, agrid, pil, false);
         
     %         % CONDENSE DISTR
             acond = compute.condense(adistr, amu, agrid);
