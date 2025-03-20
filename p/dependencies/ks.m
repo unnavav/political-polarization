@@ -1,36 +1,60 @@
 classdef ks
     methods(Static)
 
-        function [Kdata, adist] = getRegData(jt, terms, foreguess, nm, dTol, vTol, verbose)
+        function [Kprdata, VP, VL, GP, GL, V0] = getRegData(jt, terms, vTol, verbose)
 
             T = length(jt);
+            pil = terms.pil;
             agrid = terms.agrid;
             lgrid = terms.lgrid;
-            na = length(agrid); nl = length(lgrid);
+            Kgrid = terms.Kgrid;
+            na = length(agrid); nl = length(lgrid); nm = length(Kgrid);
 
-            Kdata = zeros(1,T);
+            Kprdata = zeros(T,1);
 
-            gamma = terms.gamma;
+%             gamma = terms.gamma;
 
             nmu = na*10;
             amu = linspace(agrid(1), agrid(na), nmu);
+    
+            fprintf("Solving HH problem...\n")
+            terms.lambda = 0;
+            [VP, VL, GP, GL, V0] = ks.solve(nm, nl, na, terms, vTol, verbose);
 
-            terms.lamval = 0.2;
-            [~, G, ~, EV] = ks.solve(nm, nl, na, terms, vTol, verbose);
+            [~, KL] = HH.getDist(squeeze(GP(1,:,:)), amu, agrid, pil, false);
+            [~, KH] = HH.getDist(squeeze(GP(nm,:,:)), amu, agrid, pil, false);
+%             K1 = (KL + KH)/2;
+            K1 = mean(Kgrid);
+            Kprdata(1) = K1;
 
-            for t = 1:1:T
-
-                K = jt(t);
+            fprintf("Generating regression data...\n")
+            for t = 2:1:T
+                K_t = Kprdata(t-1);
+                R = jt(t);
                 % get the distribution
 
-                [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, false);
-                Kdata = Kagg;
+                [im, we] = compute.weight(Kgrid, K_t);
+                gp_int = we*GP(im, :, :) + (1-we)*GP(im + 1, :, :);
+                gp_int = squeeze(gp_int);
 
+                gl_int = we*GL(im, :, :) + (1-we)*GL(im + 1, :, :);
+                gl_int = squeeze(gl_int);
+
+                if R == 1
+                    [~, Kagg] = HH.getDist(gp_int, amu, agrid, pil, false);
+                else
+                    [~, Kagg] = HH.getDist(gl_int, amu, agrid, pil, false);
+                end
+                Kprdata(t) = Kagg;
+                
+                if mod(t,100) == 0
+                    fprintf("\n\t t = %i", t)
+                end
             end
 
         end
 
-        function [V, G, C, V0] = solve(nm, nl, na, terms, vTol, verbose)
+        function [VP, VL, GP, GL, V0] = solve(nm, nl, na, terms, vTol, verbose)
 
             beta = terms.beta;
             sigma = terms.sigma;
@@ -53,7 +77,7 @@ classdef ks
             TGP = GP;
             TGL = GL;
 
-            V0 = zeros(nl, na);
+            V0 = zeros(nm, nl, na);
 
             % set up V so that it doesn't start empty
             % using believable r and w values: 4% interest, w = 1.3
@@ -73,8 +97,7 @@ classdef ks
 
             %init expected vals
 
-            V = VP;
-            EV = ks.getExpectation(V,Kgrid, Kfore, p);
+            EV = ks.getExpectation(VP,Kgrid, Kfore, p);
             for im = 1:nm
                 for ia = 1:na
                     for il = 1:nl
@@ -102,44 +125,45 @@ classdef ks
                 % need to forecast prices and then put them into EGM for
                 % each moment. Then need to store the expectation and use
                 % that to calculate ...? this is in the getregdata part
-                CP = TVP; CL = TVL;
                 for i = 1:nm
                     K = Kgrid(i);
                     Kp = ks.forecast(Kfore(1,:), K);
                     Kl = ks.forecast(Kfore(2,:), K);
                     terms.r = vaas.calcr(terms.alpha, terms.delta, Kp, terms.etap);
                     terms.w = vaas.calcw(terms.alpha, Kp, terms.etap);
-                    [TVP(i,:,:) TGP(i,:,:) CP(i,:,:)]= egm.solve(nl, na, terms,squeeze(V0(i,:,:)), ...
-                        squeeze(VP(i,:,:)));
+                    [TVP(i,:,:), TGP(i,:,:)]= spline.solve(terms,squeeze(VP(i,:,:)), ...
+                        squeeze(V0(i,:,:)), vTol);
                     terms.r = vaas.calcr(terms.alpha, terms.delta, Kl, terms.etal);
                     terms.w = vaas.calcw(terms.alpha, Kl, terms.etal); 
-                    [TVL(i,:,:) TGL(i,:,:) CL(i,:,:)]= egm.solve(nl, na, terms,squeeze(V0(i,:,:)), ...
-                        squeeze(VL(i,:,:)));
+                    [TVL(i,:,:), TGL(i,:,:)]= spline.solve(terms,squeeze(VL(i,:,:)), ...
+                        squeeze(V0(i,:,:)), vTol);
                 end 
 
                 dist = max(compute.dist(VP, TVP, 3), compute.dist(VL, TVL, 3));
                 kdist = max(compute.dist(GP, TGP, 3), compute.dist(GL, TGL, 3));
             
-                if mod(iter_ct, 20) == 0
+                if mod(iter_ct, 25) == 0
                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
                         "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
-                    fprintf("\nInitial Values:");
-                    fprintf("\nMin Kgrid: %2.4f, Max Kgrid: %2.4f", min(Kgrid), max(Kgrid));
-                    fprintf("\nInitial Capital Forecasts: Kp = %2.4f, Kl = %2.4f", Kp, Kl);
-                    fprintf("\nInitial Policy Function: Min Gp = %2.4f, Max Gp = %2.4f", ...
-                        min(TGP(:)), max(TGP(:)));
-                     fprintf("\nInitial Policy Function: Min Gl = %2.4f, Max Gl = %2.4f", ...
-                        min(TGL(:)), max(TGL(:)));
-                   fprintf("\nInitial Value Function: Min VP = %2.4f, Max VP = %2.4f", ...
-                       min(TVP(:)), max(TVP(:)));
-                   fprintf("\nInitial Value Function: Min VL = %2.4f, Max VL = %2.4f", ...
-                       min(TVL(:)), max(TVL(:)));
+%                     fprintf("\nInitial Values:");
+%                     fprintf("\nMin Kgrid: %2.4f, Max Kgrid: %2.4f", min(Kgrid), max(Kgrid));
+%                     fprintf("\nInitial Capital Forecasts: Kp = %2.4f, Kl = %2.4f", Kp, Kl);
+%                     fprintf("\nInitial Policy Function: Min Gp = %2.4f, Max Gp = %2.4f", ...
+%                         min(TGP(:)), max(TGP(:)));
+%                      fprintf("\nInitial Policy Function: Min Gl = %2.4f, Max Gl = %2.4f", ...
+%                         min(TGL(:)), max(TGL(:)));
+%                    fprintf("\nInitial Value Function: Min VP = %2.4f, Max VP = %2.4f", ...
+%                        min(TVP(:)), max(TVP(:)));
+%                    fprintf("\nInitial Value Function: Min VL = %2.4f, Max VL = %2.4f", ...
+%                        min(TVL(:)), max(TVL(:)));
                 end
             
                 iter_ct = iter_ct + 1;
             
                 VP = TVP;
                 VL = TVL;
+                GP = TGP;
+                GL = TGL;
 
             end
 
@@ -176,7 +200,7 @@ classdef ks
 
             b0 = fore(1,1);
             b1 = fore(1,2);
-            kpr = exp(b0)*(k^b1);
+            kpr = exp(b0).*(k.^b1);
         end
 
     end

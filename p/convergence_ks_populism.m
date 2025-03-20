@@ -19,7 +19,7 @@ addpath(genpath(pwd));
 % first set up some grids, pulling a lot from aiyagari
 % project
 
-vTol = 1e-6; dTol = 1e-4;
+vTol = 1e-4;
 
 %% Import Initialized Values
 % cd ../d
@@ -65,8 +65,8 @@ Kgrid = linspace(5, 20, nm);
 p = .9;
 
 % forecast variables
-Kfore = [ .05 .95; ...
-           .03 .9];
+Kfore = [ .1 .99; ...
+           .05 .95];
 
 %prepare for VFI
 terms = struct('alpha', alpha, ...
@@ -86,4 +86,39 @@ terms = struct('alpha', alpha, ...
     'etap', etap, ...
     'etal', etal);
 
-reg_data = ks.getRegData(jt, terms, rule_guess, nl, na, nK, vTol, verbose);
+rng("default")
+T = 400;
+jt = rand(T,1);
+jt = jt > .5;
+jt(1) = 1;
+foredist = 10;
+
+while foredist > vTol
+
+    [reg_data VP VL GP GL V0] = ks.getRegData(jt, terms, vTol, verbose);
+    
+    treg = 101:T;
+    rd = reg_data(treg);
+    % regression one--populist regime
+    P_ind = find(jt(treg)) ;
+    Ppr_ind = P_ind+1;
+    P_ind = P_ind(Ppr_ind < length(treg));
+    Ppr_ind = Ppr_ind(Ppr_ind < length(treg));
+    L_ind = find(~jt(treg));
+    Lpr_ind = L_ind+1;
+    L_ind = L_ind(Lpr_ind < length(treg));
+    Lpr_ind = Lpr_ind(Lpr_ind < length(treg));
+    
+    
+    dat = [ones(length(P_ind),1) log(rd(P_ind))];
+    pfore = regress(log(rd(Ppr_ind)), dat);
+    
+    dat = [ones(length(L_ind),1) log(rd(L_ind))];
+    lfore = regress(log(rd(Lpr_ind)), dat);
+
+    newfore = [pfore'; lfore'];
+    foredist = compute.dist(newfore, terms.Kfore,2);
+    terms.Kfore = .5*newfore + .5*terms.Kfore;
+    fprintf("Foredist = %1.4f\n", foredist);
+    disp(newfore)
+end

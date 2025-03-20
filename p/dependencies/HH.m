@@ -54,51 +54,6 @@ classdef HH
             
             while dist > vTol
                         
-                %endogrid choice
-                endoK = zeros(size(V));
-                for ia = 1:na
-                    kpr = agrid(ia);
-                    for il = 1:nl
-                        l = lgrid(il);
-                        D = egm.solveD(V0(il,:), ia, agrid);
-
-                        endoK(il, ia) = ((beta*D)^(-1) + kpr - w*l +...
-                            gov.tax(w*l, lamval, tau) - g(1) + ...
-                            r*(1-captax(il))*phi)/(1+r*(1-captax(il)));
-                    end
-                end
-            
-                %linterpolate decision rule
-                for ia = 1:na
-                    k = agrid(ia);
-                    for il = 1:nl
-                        lkvals = endoK(il, :);
-                        
-                        if k < lkvals(1)
-                            G(il, ia) = agrid(1);
-                        else 
-                            [ix, we] = compute.weight(lkvals, k);
-                            kpr = we*agrid(ix) + (1-we)*agrid(ix + 1);
-                            G(il, ia) = max(agrid(1), kpr);
-                        end
-                    end
-                end
-            
-                C = endoK;
-                for ia = 1:na
-                    for il = 1:nl
-                        l = lgrid(il);
-
-                        c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau) ...
-                            + g - G(il, ia) - r*(1-captax(il))*phi;
-
-                        C(il, ia) = max(1e-10, c);
-
-                        [ix, we] = compute.weight(agrid, G(il, ia));
-                        ev = we*V0(il, ix) + (1-we)*V0(il, ix+1);
-                        TV(il, ia) = log(c) + beta*ev;
-                    end
-                end
             
                 dist = compute.dist(TV, V, 2);
                 kdist = compute.dist(TG, G, 2);
@@ -377,11 +332,7 @@ classdef HH
             end
         end
 
-        function utils = util(apr, params, vc)
-            y = params(1);
-            beta = params(2);
-            sigma = params(3);
-
+        function utils = util(apr, y, beta, sigma, vc)
             if sigma == 1
                 utils = log(y-apr) + beta*vc;
             else

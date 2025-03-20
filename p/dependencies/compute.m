@@ -1,21 +1,19 @@
 classdef compute
     methods(Static)
-        function [res, aval, v] = gss(Cvals, params, searchgrid, prec)            
+        function [res, aval, v] = gss(Cvals, y, beta, sigma, searchgrid, prec)            
             ni = max(size(searchgrid));
             r = (3-sqrt(5))/2;
 
-            y = params(1);
-            
             a = searchgrid(1);
             b = min(searchgrid(ni), y); % Ensure c > 0;
             c = (1-r)*a + r*b;
             d = r*a + (1-r)*b;
 
             vc = compute.linterpolate(Cvals, searchgrid, c);
-            fc = -HH.util(c, params, vc);
+            fc = -HH.util(c, y, beta, sigma, vc);
 
             vd = compute.linterpolate(Cvals, searchgrid, d);
-            fd = -HH.util(d, params, vd);
+            fd = -HH.util(d, y, beta, sigma, vd);
             iter_ct = 1;
 
 %             disp(fc);
@@ -30,7 +28,7 @@ classdef compute
 
                     fc = fd;
                     vd = compute.linterpolate(Cvals, searchgrid, d);
-                    fd = -HH.util(d, params, vd);
+                    fd = -HH.util(d, y, beta, sigma, vd);
                     v = [v; d fd];
                 else
                     b = d;
@@ -39,7 +37,7 @@ classdef compute
 
                     fd = fc;
                     vc = compute.linterpolate(Cvals, searchgrid, c);
-                    fc = -HH.util(c, params, vc);
+                    fc = -HH.util(c, y, beta, sigma, vc);
                     v = [v; c fc];
                 end
 
@@ -55,11 +53,11 @@ classdef compute
 
             aval = c;
             vc = compute.linterpolate(Cvals, searchgrid, c);
-            res = HH.util(c, params, vc);
+            res = HH.util(c, y, beta, sigma, vc);
         end
 
         function v = linterpolate(Vvec, searchgrid, vi)
-            ni = max(size(Vvec));
+            ni = max(size(searchgrid));
             if vi <= searchgrid(1)
 %                 il = 1;
                 v = Vvec(1);
