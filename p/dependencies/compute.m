@@ -86,9 +86,8 @@ classdef compute
             grid = grid + ones(size(grid))*(l - 1.0);
         end
 
-        function [P_mat, z_grid] = getTauchen(Nz, mu, sigma, rho)
+        function [P_mat, z_grid] = getTauchen(Nz, mu, sigma, rho, s)
             
-            s = 2.575;
             sigma_x = ((sigma^2)/(1-rho^2))^(0.5); 
 
             x_1 = mu - s*sigma_x;
