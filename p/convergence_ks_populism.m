@@ -16,17 +16,21 @@ restoredefaultpath;
 clear all; clc;
 addpath(genpath(pwd));
 
-% first set up some grids, pulling a lot from aiyagari
+local = parcluster('local');
+local.NumWorkers = 4;
+pool = local.parpool(4);
+
+%% first set up some grids, pulling a lot from aiyagari
 % project
 
 vTol = 1e-4;
 
-%% Import Initialized Values
+% Import Initialized Values
 % cd ../d
 % terms = load("terms.m");
 % cd ../p
 
-%% params
+% params
 alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
 
 etap = 0;
@@ -109,41 +113,53 @@ terms = struct('alpha', alpha, ...
     'lambda', 0);
 
 rng("default")
-T = 400;
-jt = rand(T,1);
-jt = jt > .5;
-jt(1) = 1;
-foredist = 10;
+T = 1000;
+Rt = predict.sim(T,2,"default",Rguess);
+dt = predict.sim(T,2,"default",pid);
+jt = [Rt dt];
 
 verbose = true;
-[Varray, Garray, EVarray] = ks.parsolve(terms, vTol, verbose);
+forearray = cell(50,1);
+
+newfore = Kfore;
+forearray{1} = Kfore;
+array_ind = 1;
 
 while foredist > vTol
 
-    [reg_data VP VL GP GL V0] = ks.getRegData(jt, terms, vTol, verbose);
+    [Kprdata Varray Garray EVarray] = ks.getRegData(jt, terms, vTol, verbose);
     
-    treg = 101:T;
-    rd = reg_data(treg);
-    % regression one--populist regime
-    P_ind = find(jt(treg)) ;
-    Ppr_ind = P_ind+1;
-    P_ind = P_ind(Ppr_ind < length(treg));
-    Ppr_ind = Ppr_ind(Ppr_ind < length(treg));
-    L_ind = find(~jt(treg));
-    Lpr_ind = L_ind+1;
-    L_ind = L_ind(Lpr_ind < length(treg));
-    Lpr_ind = Lpr_ind(Lpr_ind < length(treg));
-    
-    
-    dat = [ones(length(P_ind),1) log(rd(P_ind))];
-    pfore = regress(log(rd(Ppr_ind)), dat);
-    
-    dat = [ones(length(L_ind),1) log(rd(L_ind))];
-    lfore = regress(log(rd(Lpr_ind)), dat);
+    treg = 50:T;
 
-    newfore = [pfore'; lfore'];
-    foredist = compute.dist(newfore, terms.Kfore,2);
-    terms.Kfore = .5*newfore + .5*terms.Kfore;
-    fprintf("Foredist = %1.4f\n", foredist);
+    for Rstate = 1:2
+        for dstate = 1:2
+
+            state_index = Rstate*2-1 + dstate-1;
+
+            data_inds = find(jt(treg,1) == Rstate & jt(treg,2) == dstate);
+            Kpr_inds = data_inds+1;
+            data_inds = data_inds(Kpr_inds < length(treg));
+            Kpr_inds = Kpr_inds(Kpr_inds < length(treg));
+            
+            ddata = ones(length(Kpr_inds),1)*dgrid(dstate);
+            regdata = [ones(length(Kpr_inds),1) log(Kprdata(data_inds)) ddata];
+
+            state_fore = regress(log(Kprdata(Kpr_inds)), regdata);
+            newfore(state_index,:) = state_fore';
+        end
+    end
+
+    
+    array_ind = array_ind+1;
+    forearray{array_ind} = newfore;
+    foredist = compute.dist(newfore, terms.Kfore, 2);
+
+    fprintf("New forecast:\n")
     disp(newfore)
+
+    frintf("REGRESSION DIST = %1.4f     ---------------------", foredist)
+    terms.Kfore = .5*newfore + .5*Kfore;
 end
+
+cd ../d/
+save KS_migration_results

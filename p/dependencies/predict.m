@@ -2,27 +2,27 @@ classdef predict
     methods(Static)
 
         %% simulate z 
-        function zinds = simz(N_T, Nz, rnseed, P_mat)
-            zsim = zeros(1,N_T);
-            izsim = zsim; %indices
+        function inds = sim(N_T, Nz, rnseed, P_mat)
+            sim = zeros(N_T, 1);
+            isim = sim; %indices
         
             rng(rnseed);
-            efsim = rand(1,N_T);
+            efsim = rand(N_T,1);
         
             %start at median
-            izsim(1) = median(1:Nz); %should I round down? does median automatically?
+            isim(1) = round(median(1:Nz)); %should I round down? does median automatically?
             
             %build CDF
             cumP_mat = cumsum(P_mat, 2);
             
             %now, we simulate
             for t=1:N_T-1
-                csumvec = cumP_mat(izsim(t),1:Nz);
+                csumvec = cumP_mat(isim(t),1:Nz);
                 condmet = (efsim(t+1) <= csumvec);
-                izsim(t+1) = find(condmet, 1, 'first');
+                isim(t+1) = find(condmet, 1, 'first');
             end
             
-            zinds = izsim;
+            inds = isim;
         end
 
         function [rt, wt, impliedK] = transition(r0, r1, lt, terms, lambda, dTol)
