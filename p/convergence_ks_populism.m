@@ -143,7 +143,7 @@ while foredist > vTol
             data_inds = data_inds(Kpr_inds < length(treg));
             Kpr_inds = Kpr_inds(Kpr_inds < length(treg));
             
-            ddata = ones(length(jt),1)*dgrid(dstate) + delta;
+            ddata = ones(length(Kpr_inds),1)*dgrid(dstate) + delta;
             regdata = [ones(length(Kpr_inds),1) log(Kprdata(data_inds)) log(ddata)];
 
             state_fore = regress(log(Kprdata(Kpr_inds)), regdata);
