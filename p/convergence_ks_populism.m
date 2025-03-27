@@ -17,6 +17,7 @@ clear all; clc;
 addpath(genpath(pwd));
 
 local = parcluster('local');
+fprintf("Numbe of workers available: %i\n", local.NumWorkers)
 local.NumWorkers = 4;
 pool = local.parpool(4);
 
@@ -69,7 +70,7 @@ range = 3.5;
 % [pid, dgrid] = compute.getTauchen(2, mu_d, sigmx, rho_d, range);
 
 pid = [.95 0.05; 0.05 .95];
-dgrid = [0.00 -0.02];
+dgrid = [0.03 -0.03];
 
 agrid = compute.logspace(al, ah, na)';
 
@@ -125,6 +126,7 @@ newfore = Kfore;
 forearray{1} = Kfore;
 array_ind = 1;
 
+foredist = 10;
 while foredist > vTol
 
     [Kprdata Varray Garray EVarray] = ks.getRegData(jt, terms, vTol, verbose);
@@ -141,8 +143,8 @@ while foredist > vTol
             data_inds = data_inds(Kpr_inds < length(treg));
             Kpr_inds = Kpr_inds(Kpr_inds < length(treg));
             
-            ddata = ones(length(Kpr_inds),1)*dgrid(dstate);
-            regdata = [ones(length(Kpr_inds),1) log(Kprdata(data_inds)) ddata];
+            ddata = ones(length(jt),1)*dgrid(dstate) + delta;
+            regdata = [ones(length(Kpr_inds),1) log(Kprdata(data_inds)) log(ddata)];
 
             state_fore = regress(log(Kprdata(Kpr_inds)), regdata);
             newfore(state_index,:) = state_fore';
@@ -157,7 +159,7 @@ while foredist > vTol
     fprintf("New forecast:\n")
     disp(newfore)
 
-    frintf("REGRESSION DIST = %1.4f     ---------------------", foredist)
+    fprintf("REGRESSION DIST = %1.4f     ---------------------", foredist)
     terms.Kfore = .5*newfore + .5*Kfore;
 end
 
