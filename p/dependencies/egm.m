@@ -1,19 +1,19 @@
 classdef egm
     methods(Static)
 
-        function [TV, G, C] = solve(nl, na, terms, V0, V)
+        function [TV, G, C, V0] = solve(nl, na, terms, V0, V)
             
             w = terms.w;
             r = terms.r;
 
             captax = terms.captax;
             lamval = terms.lamval;
-            tau = terms.tau;
+            tau = 0;
             agrid = terms.agrid;
             lgrid = terms.lgrid;
             beta = terms.beta;
             phi = 1;
-            g = terms.G;
+            g = terms.g;
 
             %endogrid choice
             endoK = zeros(size(V));
@@ -24,8 +24,8 @@ classdef egm
                     l = lgrid(il);
                     D = egm.solveD(V0(il,:), ia, agrid);
 
-                    endoK(il, ia) = ((beta*D)^(-1) + kpr - (w*l +...
-                        gov.tax(w*l, lamval, tau) - g(1) + ...
+                    endoK(il, ia) = ((beta*D)^(-1) + kpr - (w*l -...
+                        gov.tax(w*l, lamval, tau) + 0 + ...
                         r*(1-captax(il))*phi)/(1+r*(1-captax(il))));
                 end
             end
@@ -46,6 +46,8 @@ classdef egm
                     end
                 end
             end
+            G = max(agrid(1), G);
+            G = min(agrid(na),G);
         
             C = endoK;
             for ia = 1:na
@@ -53,7 +55,7 @@ classdef egm
                     l = lgrid(il);
 
                     c = (1+r*(1-captax(il)))*agrid(ia) + w*l - gov.tax(w*l, lamval, tau) ...
-                        + g - G(il, ia) - r*(1-captax(il))*phi;
+                        + 0 - G(il, ia) - r*(1-captax(il))*phi;
 
                     C(il, ia) = max(1e-6, c);
 
@@ -62,6 +64,14 @@ classdef egm
                     TV(il, ia) = log(C(il, ia)) + beta*ev;
                 end
             end
+
+            pil = terms.pil;
+            for ia = 1:na
+                for il = 1:nl
+                    V0(il, ia) = pil(il,:)*TV(:,ia);
+                end
+            end
+
         end
 
         %% getting derivative of expected value function

@@ -248,3 +248,49 @@ hold off
 hL = legend('\epsilon = 0.25', '\epsilon = 1.00', '\epsilon = 3.94', ...
     ['45' char(176) 'line']);
 hL.Layout.Tile = 'East';
+
+
+%% 
+
+hold on;
+colormap(gray)
+mesh((VPL<VP)')
+ylabel('Assets $a$', 'FontSize', 16, 'Interpreter', 'latex');
+xlabel('Idiosyncratic Productivity $\varepsilon$', 'FontSize', 16, 'Interpreter', 'latex');
+title('Votes for Liberlism:', ...
+      'FontSize', 18, 'Interpreter', 'latex');
+subtitle('Vote for in Gray, Vote Against in White', ...
+      'FontSize', 12, 'Interpreter', 'latex')
+set(gca, 'FontSize', 14);
+yticklabels(round(agrid(1:50:250),2))
+xticklabels(round(lgrid,2))
+hold off;
+
+hold on;
+colormap(gray)
+mesh((VLP<VL)')
+ylabel('Assets $a$', 'FontSize', 16, 'Interpreter', 'latex');
+xlabel('Idiosyncratic Productivity $\varepsilon$', 'FontSize', 16, 'Interpreter', 'latex');
+title('Votes for Populism:', ...
+      'FontSize', 18, 'Interpreter', 'latex');
+subtitle('Vote for in Gray, Vote Against in White', ...
+      'FontSize', 12, 'Interpreter', 'latex')
+set(gca, 'FontSize', 14);
+yticklabels(round(agrid(1:50:250),2))
+xticklabels(round(lgrid,2))
+hold off;
+
+hold on;
+colormap(gray(3))
+mesh((VPL>VP)' + (VLP>VL)')
+ylabel('Assets $a$', 'FontSize', 16, 'Interpreter', 'latex');
+xlabel('Idiosyncratic Productivity $\varepsilon$', 'FontSize', 16, 'Interpreter', 'latex');
+title('A Middle Class', ...
+      'FontSize', 18, 'Interpreter', 'latex');
+set(gca, 'FontSize', 14);
+yticklabels(round(agrid(1:50:250),2))
+xticklabels(round(lgrid,2))
+hold off;
+
+
+

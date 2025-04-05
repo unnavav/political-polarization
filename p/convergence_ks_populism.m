@@ -16,10 +16,9 @@ restoredefaultpath;
 clear all; clc;
 addpath(genpath(pwd));
 
-local = parcluster('local');
-fprintf("Numbe of workers available: %i\n", local.NumWorkers)
-local.NumWorkers = 4;
-pool = local.parpool(4);
+% local = parcluster('local');
+% fprintf("Numbe of workers available: %i\n", local.NumWorkers)
+% pool = local.parpool(23);
 
 %% first set up some grids, pulling a lot from aiyagari
 % project
@@ -32,10 +31,10 @@ vTol = 1e-4;
 % cd ../p
 
 % params
-alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
+alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 
 etap = 0;
-etal = .1;
+etal = 0.25;
 taup = 0;
 taul = 0;
  
@@ -70,7 +69,7 @@ range = 3.5;
 % [pid, dgrid] = compute.getTauchen(2, mu_d, sigmx, rho_d, range);
 
 pid = [.95 0.05; 0.05 .95];
-dgrid = [0.03 -0.03];
+dgrid = [0.02 -0.02];
 
 agrid = compute.logspace(al, ah, na)';
 
@@ -78,17 +77,17 @@ verbose = true;
 
 % set size of aggregate moment grid
 nm = 25;
-Kgrid = linspace(5, 20, nm);
+Kgrid = linspace(0, 15, nm);
 
 p = .9;
 
 % forecast variables (LL, LH, PL, PH)
-Kfore = [0.0, 0.85, -0.1;  % LL
-         0.0, 0.85, -0.1;  % LH
-         0.0, 0.85, -0.1;  % PL
-         0.0, 0.85, -0.1]; % PH
-
-
+% guess from previous runs of the code
+Kfore = [-3.3110, 0.1402;  % LL
+         -0.6568, 0.8283;  % LH
+         -0.8760, 0.7702;  % PL
+         -0.6812, 0.8213]; % PH
+       
 Rguess = [.9 .1; ...
           .1 .9];
 
@@ -111,7 +110,7 @@ terms = struct('alpha', alpha, ...
     'Kfore', Kfore, ...
     'Kgrid', Kgrid, ...
     'etagrid', [etal etap], ...
-    'lambda', 0);
+    'lamval', 0);
 
 rng("default")
 T = 1000;
@@ -127,6 +126,9 @@ forearray{1} = Kfore;
 array_ind = 1;
 
 foredist = 10;
+
+cd ../d/
+
 while foredist > vTol
 
     [Kprdata Varray Garray EVarray] = ks.getRegData(jt, terms, vTol, verbose);
@@ -143,8 +145,7 @@ while foredist > vTol
             data_inds = data_inds(Kpr_inds < length(treg));
             Kpr_inds = Kpr_inds(Kpr_inds < length(treg));
             
-            ddata = ones(length(Kpr_inds),1)*dgrid(dstate) + delta;
-            regdata = [ones(length(Kpr_inds),1) log(Kprdata(data_inds)) log(ddata)];
+            regdata = [ones(length(Kpr_inds),1) log(Kprdata(data_inds))];
 
             state_fore = regress(log(Kprdata(Kpr_inds)), regdata);
             newfore(state_index,:) = state_fore';
@@ -160,8 +161,7 @@ while foredist > vTol
     disp(newfore)
 
     fprintf("REGRESSION DIST = %1.4f     ---------------------", foredist)
-    terms.Kfore = .5*newfore + .5*Kfore;
+    terms.Kfore = .5*newfore + .5*terms.Kfore;
 end
-
-cd ../d/
-save KS_migration_results
+filename = sprintf("KS_migration_results_eta_%0.2f_.mat", etal);
+save(filename)

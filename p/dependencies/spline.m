@@ -4,7 +4,7 @@ classdef spline
         % Full spline solve--using interp1 for now, but will replace with
         % my own spline solution once I'm sure what I'm doing is actually
         % stable
-        function [TV, G] = solve(terms, V, EV, vTol)
+        function [TV, G, EV] = solve(terms, V, EV, vTol)
             beta = terms.beta;
             sigma = terms.sigma;
             pil = terms.pil;
@@ -13,7 +13,7 @@ classdef spline
             na = length(agrid); nl = length(lgrid);
             r = terms.r;
             w = terms.w;
-            lambda = terms.lambda;
+            lambda = terms.lamval;
             tau = terms.tau;
             captax = terms.captax;
             aspline = compute.logspace(agrid(1), agrid(na), na*2);
@@ -40,6 +40,13 @@ classdef spline
                     G(il, ia) = aval;
                 end
             end
+
+            for ia = 1:na
+                for il = 1:nl
+                    EV(il, ia) = pil(il,:)*TV(:,ia);
+                end
+            end
+
         end
 
         function [C] = cubicSpline(l, h, r, VK)

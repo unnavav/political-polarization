@@ -58,7 +58,7 @@ classdef ks
             Garray = cell(2,2);
             RDmat = terms.RDmat;
 
-            parfor i = 1:4
+            for i = 1:4
                 j = ceil(i/2);
                 k = mod(i,2) + 1;
 
@@ -117,8 +117,7 @@ classdef ks
             %broadcasting, babyyyyyyyyyyy
             %forecasting K once, because the forecast only happens once
             
-            Kpr = ks.forecast(Kfore, Kgrid', ...
-                repmat(delta, nm, 1));
+            Kpr = ks.forecast(Kfore, Kgrid');
 
             %getting linear interpolation grid once too. 
             [ix, we] = ks.weight(Kgrid, Kpr);
@@ -142,16 +141,16 @@ classdef ks
                 for i = 1:nm
                     terms.r = rgrid(state_index, im);
                     terms.w = wgrid(state_index, im);
-                    [TV(i,:,:), TG(i,:,:)]= spline.solve(terms,squeeze(V(i,:,:)), ...
-                        squeeze(V0(i,:,:)), vTol);
+                    [TV(i,:,:), TG(i,:,:)]= egm.solve(nl, na, terms,squeeze(V0(i,:,:)), ...
+                        squeeze(V(i,:,:)));
                 end 
 
                 dist = compute.dist(V, TV, 3);
                 kdist = compute.dist(G, TG, 3);
             
-%                 if mod(iter_ct, 25) == 0
-%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+                if mod(iter_ct, 25) == 0
+                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+                        "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
 % %                     fprintf("\nInitial Values:");
 % %                     fprintf("\nMin Kgrid: %2.4f, Max Kgrid: %2.4f", min(Kgrid), max(Kgrid));
 % %                     fprintf("\nInitial Capital Forecasts: Kp = %2.4f, Kl = %2.4f", Kp, Kl);
@@ -163,7 +162,7 @@ classdef ks
 % %                        min(TVP(:)), max(TVP(:)));
 % %                    fprintf("\nInitial Value Function: Min VL = %2.4f, Max VL = %2.4f", ...
 % %                        min(TVL(:)), max(TVL(:)));
-%                 end
+                end
             
                 iter_ct = iter_ct + 1;
             
@@ -201,30 +200,26 @@ classdef ks
 
         end
 
-        function kpr = forecast(fore,k,d)
-            % Ensure k and d are the same size for broadcasting
-            if size(k,1) ~= size(d,1) || size(k,2) ~= size(d,2)
-                error('K and d must have the same size.');
-            end
-
-            %k: nm x 1; d=nm x 1
-            one_kd = [ones(size(k(:))) log(k(:)) log(d(:))]; % ==> one_kd = nm x 3
-            %fore: (nR*nd) x 3
-            kguess = fore*one_kd'; % ==> kguess = (nR*nd) x nm
+        function kpr = forecast(fore,k)
+            %k: nm x 1
+            one_k = [ones(size(k(:))) log(k(:))]; % ==> one_kd = nm x 2
+            %fore: (nR*nd) x 2
+            kguess = fore*one_k'; % ==> kguess = (nR*nd) x nm
             kpr =  exp(kguess);
-
         end
 
 
         function [ixmat, wemat] = weight(Kgrid, Kpr)
 
             Kpr = min(Kpr, ones(size(Kpr))*max(Kgrid));
+            Kpr = max(Kpr, ones(size(Kpr))*min(Kgrid));
             nm = length(Kgrid);
 
             % Kpr = (nR*nd) x nm
             % creating index matrix first
 
-            ixmat = arrayfun(@(x) find(Kgrid <= x, 1, 'last'), Kpr);
+
+            ixmat = discretize(Kpr, Kgrid);
             ixmat = min(ixmat, nm-1); % making sure it doesn't exceed
 
             Klower = Kgrid(ixmat); 

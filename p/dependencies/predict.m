@@ -53,10 +53,12 @@ classdef predict
             Varray = cell(T,1);
             Farray = cell(T,1);
 
+            terms.phi = 0;
+
             % solving final period value function
             terms.r = rt(T);
             terms.w = wt(T);
-            [V,G,~,~] = HH.solve(nl, na, terms, 1e-8, verbose);
+            [V,G] = predict.solve(nl, na, terms, agrid, lgrid);
             Garray{T,1} = G;
             Varray{T,1} = V;
             [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
@@ -66,7 +68,7 @@ classdef predict
             % steady state in period 1
             terms.r = rt(1);
             terms.w = wt(1);
-            [V,G,~,~] = HH.solve(nl, na, terms, 1e-8, verbose);
+            [V,G] = predict.solve(nl, na, terms, agrid, lgrid);
             Garray{1,1} = G;
             Varray{1,1} = V;
             [adistr, Kagg] = HH.getDist(G, amu, agrid, pil, true);
@@ -86,16 +88,19 @@ classdef predict
                 fprintf("_Iteration %i_\n", iter_ct);
                 for t = (T-1):-1:2
     
-                    if mod(t,20) == 0
+%                     if mod(t,20) == 0
                         fprintf("T = %i... ", t)
-                    end
+%                     end
                     
                     Vpr = Varray{t+1};
+
                     localterms = terms;
                     localterms.r = rt(t);
                     localterms.w = wt(t);
-                    [V, G, ~] = HH.solve(nl, na, localterms, vTol, verbose);
-    
+               
+                    
+                    [V, G] = predict.solve(nl,na,localterms,agrid,lgrid);
+
                     Varray{t} = V;
                     Garray{t} = G;
                 end
@@ -182,5 +187,49 @@ classdef predict
             end
         end
 
+        function [V, G] = solve(nl, na, terms, agrid, lgrid)
+
+            r = terms.r;
+            w = terms.w;
+            pil = terms.pil;
+
+            V = zeros(nl,na);
+            % set up V so that it doesn't start empty
+            scale = 1;
+            for ia = 1:na
+                k_val = agrid(ia);
+                for il = 1:nl
+                    yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*0;
+                    ymin = max(1e-10, yval);
+                    V(il, ia) = log(ymin);
+                end
+            end
+            
+            %init expected vals
+            for ia = 1:na
+                for il = 1:nl
+                    EV(il, ia) = pil(il,:)*V(:,ia);
+                end
+            end
+    
+            dist = 10; iter_ct = 1; vTol = 1e-4;
+            G = zeros(size(V))3
+            while dist > vTol && iter_ct < 500
+                  [TV, TG, EV] = compute.interpV(terms, V, EV, vTol);
+        
+                vdist = compute.dist(TV,V,2);
+                gdist = compute.dist(TG,G,2);
+                dist = max(vdist,gdist);
+        
+%                 if mod(iter_ct, 50) == 0
+%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, vdist, gdist);
+%                 end
+                iter_ct = iter_ct+1;
+
+                V = TV;
+                G = TG;
+            end
+        end
     end
 end

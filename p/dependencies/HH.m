@@ -187,7 +187,7 @@ classdef HH
             % in power
             mu = ones(size(mu))*(1/(nmu*nl));
 
-            while (distance > 1e-6 && iter_ct < 3000)
+            while (distance > 1e-6 & iter_ct < 3000)
                 
                 mu1 = zeros(size(mu));
                 

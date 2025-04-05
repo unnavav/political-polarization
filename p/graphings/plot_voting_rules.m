@@ -30,3 +30,20 @@ grid on;
 set(gca, 'FontSize', 14);
 
 legend(legendEntries, 'Location', 'bestoutside', 'Interpreter', 'latex');
+
+
+%%
+figure;
+hold on;
+colormap("gray")
+votes = VL>VP;
+mesh(votes')
+ylabel('Assets $a$', 'FontSize', 16, 'Interpreter', 'latex');
+xlabel('Idiosyncratic Productivity $\varepsilon$', 'FontSize', 16, 'Interpreter', 'latex');
+title('Votes for Populism:', ...
+      'FontSize', 18, 'Interpreter', 'latex');
+subtitle('Vote for in Gray, Vote Against in White', ...
+      'FontSize', 12, 'Interpreter', 'latex')
+set(gca, 'FontSize', 14);
+yticklabels(round(agrid(1:50:250),2))
+xticklabels(round(lgrid,2))

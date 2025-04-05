@@ -260,5 +260,45 @@ classdef compute
                 end
             end
         end
+   
+        function [TV, G, EV] = interpV(terms, V, EV, vTol)
+            beta = terms.beta;
+            sigma = terms.sigma;
+            pil = terms.pil;
+            agrid = terms.agrid;
+            lgrid = terms.lgrid;
+            na = length(agrid); nl = length(lgrid);
+            r = terms.r;
+            w = terms.w;
+            lambda = terms.lamval;
+            tau = terms.tau;
+            captax = terms.captax;
+            G = zeros(size(V)); TV = G;
+
+            % now gss over spline
+            for il = 1:nl
+                l = lgrid(il);
+                tau_r = captax(il);
+                for ia = 1:na
+                    a = agrid(ia);
+                    y = w*l - gov.tax(w*l,lambda, tau) + (1+r*(1-tau_r))*a;
+                    searchgrid = agrid(1:sum(agrid<=a));
+                    [vval, aval] = compute.gss(EV(il,:),y, beta, ...
+                        sigma, searchgrid, vTol*1e-2);
+                    TV(il, ia) = vval;
+                    G(il, ia) = aval;
+                end
+            end
+
+            for ia = 1:na
+                for il = 1:nl
+                    EV(il, ia) = pil(il,:)*TV(:,ia);
+                end
+            end
+
+        end
+
+
     end
+
 end

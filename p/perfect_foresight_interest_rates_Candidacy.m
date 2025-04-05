@@ -77,12 +77,13 @@ cd ../../p
 lt = [lP repelem(lL, T-1)];
 
 r0 = 0.0454;
-r1 = rL;
+r1 = .1042;
 
 alpha = 0.36; delta = 0.06;                                                                                                                                                                                                                                                                                                                                                                                                                              
 
 terms.alpha = alpha;
 terms.delta = delta;
+lt = [logspace(0,.01,10) repelem(1.01, T-10)];
 
 lambda = 0.3;
 
