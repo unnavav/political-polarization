@@ -21,9 +21,9 @@ addpath(genpath(pwd));
 
 vTol = 1e-5; dTol = 1e-2;
 %% params
-alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
+alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
 
-neta = 6;
+neta = 20;
 nl = 7;
 na = 250;
 nmu = na*10;
@@ -84,7 +84,7 @@ adj = 1/3;
 tgrid = [0 .2]; 
 proggrid = [.70 .25 .05 0 0 0 0];
 % tgrid = [.15 .05]; 
-etagrid = linspace(.0,.01,neta);
+etagrid = linspace(.0,.25,neta);
 
 % captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
@@ -159,8 +159,8 @@ EV = zeros(nl, na);
 
 for i = 5:neta
     eta = etagrid(i);
-    kl = 6.83;
-    kh = 6.9;
+    kl = 0;
+    kh = 15;
     kval = (kl + kh)/2;
     kDist = 10;
     fprintf("Migration Rate: %0.4f\n", eta);
@@ -212,7 +212,7 @@ for i = 5:neta
         while dist > vTol && iter_ct < 500
             
 %             if iter_ct < 400
-%                 [TV, TG, ~, EV] = egm.solve(nl, na, 1, terms, EV, V);
+%                 [TV, TG, ~, EV] = egm.solve(nl, na, terms, EV, V);
 %             else 
                 if iter_ct < 200
                     sTol = 1e-4;
@@ -231,12 +231,8 @@ for i = 5:neta
                     "\n\t\t||TG - G|| = %4.6f", iter_ct, vdist, gdist);
             end
             iter_ct = iter_ct+1;
-            if dTol < 1
-                V = V + 0.1*(TV-V);
-            else
-                V = TV;
-            end
-             
+
+            V = TV;
             G = TG;
         end
 
@@ -244,9 +240,7 @@ for i = 5:neta
         wages = [terms.w*lgrid - gov.tax(terms.w*lgrid, terms.lamval, terms.tau)]';
         wage_inc = repmat(wages,1,na);
         y = cap_inc + wage_inc;
-    
-
-
+   
         Varray{i}= V;
         Garray{i} = G;
         EVarray{i} = EV; 
