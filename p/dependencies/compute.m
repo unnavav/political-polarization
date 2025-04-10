@@ -281,8 +281,10 @@ classdef compute
                 tau_r = captax(il);
                 for ia = 1:na
                     a = agrid(ia);
-                    y = w*l - gov.tax(w*l,lambda, tau) + (1+r*(1-tau_r))*a;
-                    searchgrid = agrid(1:sum(agrid<=a));
+                    y = gov.tax(w*l,lambda, tau) + (1+r*(1-tau_r))*a;
+                    ix = sum(agrid <= y);
+                    ix = max(ix, 1);  % ensure at least one index
+                    searchgrid = agrid(1:ix);
                     [vval, aval] = compute.gss(EV(il,:),y, beta, ...
                         sigma, searchgrid, vTol*1e-2);
                     TV(il, ia) = vval;

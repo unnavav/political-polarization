@@ -19,11 +19,12 @@ addpath(genpath(pwd));
 % first set up some grids, pulling a lot from aiyagari
 % project
 
-vTol = 1e-5; dTol = 1e-2;
 %% params
+vTol = 1e-5; dTol = 1e-2;
 alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
 
 neta = 20;
+ntau = 20;
 nl = 7;
 na = 250;
 nmu = na*10;
@@ -70,34 +71,7 @@ kh = klwrbnd*khmult;
 % make asset grid
 
 agrid = compute.logspace(al, ah, na)';
-
-% make distribution grid
-
 amu = linspace(al, ah, nmu);
-
-% lambda upper lower bounds
-ll = 0; lh = 1;
-lamval = (lh + ll)/2; % people are really reactive to taxes
-adj = 1/3;
-
-%party tax regimes
-tgrid = [0 .2]; 
-proggrid = [.70 .25 .05 0 0 0 0];
-% tgrid = [.15 .05]; 
-etagrid = linspace(.0,.25,neta);
-
-% captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
-% captax = compute.logspace(0, 20, nl)/100;
-% captax = linspace(0, .20, nl);
-% captax = repelem(.15, nl);
-% captax = repelem(0, nl);
-captax = repelem(0, nl);
-
-G = [0 0];
-
-folname = "steadystates";
-mkdir("../d/",folname)
-
 
 adistr = zeros(nl, nmu);
 
@@ -107,47 +81,38 @@ for im = 1:nmu
     end 
 end
 
+etagrid = linspace(.0,.9,neta);
+taugrid = linspace(.0,.9,ntau);
+% captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
+% captax = compute.logspace(0, 20, nl)/100;
+% captax = linspace(0, .20, nl);
+% captax = repelem(.15, nl);
+% captax = repelem(0, nl);
+captax = repelem(0, nl);
 
-% first init equilibrium objects like prices, govt spending, etc
-kval = (kh+kl)/2;
-eta = etagrid(1);
-r = vaas.calcr(alpha, delta, kval/lagg, eta);
-wage = vaas.calcw(alpha, kval/lagg, eta);
+G = [0 0];
 
-wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-cap_inc_mu = zeros(size(wage_inc_mu));
 
-for il = 1:nl
-    cap_inc_mu(il, :) = repmat(r*amu, 1, 1)*(1-captax(il));
-end
-Tmu = zeros(nl, nmu, np);
-for ip = 1:np
-Tmu(:,:,ip) = gov.tax(wage_inc_mu,0,tgrid(ip)) + ...
-    0*r*cap_inc_mu;
-end
-
-Gvals = sum(sum(Tmu(:,:,:).*adistr(:,:)));
-Gvals = squeeze(Gvals)';
-lumpsum = .7.*Gvals;
-progressive =.3.*Gvals;
-g(1,:) = lumpsum(1) + progressive(1).*proggrid;
-g(2,:) = lumpsum(2) + progressive(2).*proggrid;    
 
 kDist = 10;
 gDist = 10; 
 
 kval = .5;
-g = zeros(np, nl);
-terms.lamval = 0; % only migration in this place
 
 DIST = max(kDist,gDist);
 
-Varray = cell(neta,1);
-Garray = cell(neta,1);
-EVarray = cell(neta,1);
-Warray = cell(neta,1);
-Karray = cell(neta,1);
-parray = cell(neta,1);
+Varray = cell(neta,ntau);
+Garray = cell(neta,ntau);
+EVarray = cell(neta,ntau);
+Warray = cell(neta,ntau);
+Karray = cell(neta,ntau);
+parray = cell(neta,ntau);
+
+
+meanEV_diffs = zeros(neta, ntau);
+stdEV_diffs = zeros(neta, ntau);
+maxEV_diffs = zeros(neta, ntau);
+minEV_diffs = zeros(neta, ntau);
 
 %% migration ss's
 
@@ -156,8 +121,21 @@ TG = TV; V= TV;
 
 EV = zeros(nl, na);
 
+%prepare for VFI
+terms = struct('beta', beta, ...
+    'sigma', sigma, ...
+    'phi', phi, ...
+    'agrid', agrid, ...
+    'lgrid', lgrid, ...
+    'pil', pil, ...
+    'captax', zeros(1,nl));
 
-for i = 5:neta
+folname = "steadystates";
+mkdir("../d/",folname)
+newdir = strcat("../d/", folname);
+cd(newdir)
+
+for i = 1:neta
     eta = etagrid(i);
     kl = 0;
     kh = 15;
@@ -165,273 +143,130 @@ for i = 5:neta
     kDist = 10;
     fprintf("Migration Rate: %0.4f\n", eta);
 
-    while kDist > dTol
-    
-        fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
-        fprintf("\nA guess: %4.8f. Begin iteration for solution...\n", kval)
-        fprintf("\t Solving value function:\n")
-        
-       %prepare for VFI
-        terms = struct('beta', beta, ...
-            'sigma', sigma, ...
-            'phi', phi, ...
-            'agrid', agrid, ...
-            'lgrid', lgrid, ...
-            'pil', pil, ...
-            'lamval', 0, ...
-            'captax', zeros(1,nl), ...
-            'tau', 0, ...
-            'g', g);
-    
+    for j = 1:ntau
 
-        terms.r = vaas.calcr(alpha, delta, kval, eta);
-        terms.w = vaas.calcw(alpha, kval, eta);
-    
-        iter_ct = 1;
-        dist = 10;
-        G = zeros(nl,na);
-
-        % set up V so that it doesn't start empty
-        scale = 1;
-        for ia = 1:na
-            k_val = agrid(ia);
-            for il = 1:nl
-                yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*phi;
-                ymin = max(1e-10, yval);
-                V(il, ia) = log(ymin);
-            end
-        end
-        
-        %init expected vals
-        for ia = 1:na
-            for il = 1:nl
-                EV(il, ia) = pil(il,:)*V(:,ia);
-            end
-        end
-
-        while dist > vTol && iter_ct < 500
-            
-%             if iter_ct < 400
-%                 [TV, TG, ~, EV] = egm.solve(nl, na, terms, EV, V);
-%             else 
-                if iter_ct < 200
-                    sTol = 1e-4;
-                else 
-                    sTol = 1e-6;
-                end
-                [TV, TG, EV] = compute.interpV(terms, V, EV, sTol);
-%             end
-    
-            vdist = compute.dist(TV,V,2);
-            gdist = compute.dist(TG,G,2);
-            dist = max(vdist,gdist);
-    
-            if mod(iter_ct, 50) == 0
-                fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-                    "\n\t\t||TG - G|| = %4.6f", iter_ct, vdist, gdist);
-            end
-            iter_ct = iter_ct+1;
-
-            V = TV;
-            G = TG;
-        end
-
-        cap_inc = repmat((1+terms.r*agrid), nl,1);
-        wages = [terms.w*lgrid - gov.tax(terms.w*lgrid, terms.lamval, terms.tau)]';
-        wage_inc = repmat(wages,1,na);
-        y = cap_inc + wage_inc;
-   
-        Varray{i}= V;
-        Garray{i} = G;
-        EVarray{i} = EV; 
-
-        [Warray{i}, Karray{i}] = HH.getDist(Garray{i}, amu, agrid, ...
-            pil, false);      
-    %     adistr = Warray{1};
-    %     Gvals = sum(sum(Tmu(:,:,:).*adistr(:,:)));
-    %     Gvals = squeeze(Gvals)';
-    %     lumpsum = .7.*Gvals;
-    %     progressive =.3.*Gvals;
-    %     g(1,:) = lumpsum(1) + progressive(1).*proggrid;
-    %     g(2,:) = lumpsum(2) + progressive(2).*proggrid;    
-    
-        kdist = Karray{i} - kval;
-    
-        %if you're looking at this, ignore it. it is chaos incarnate.
-        if kdist < 10
-            adj = .5;
-            vTol = 1e-4;
-        else
-            adj = .7;
-            vTol = 1e-6;
-        end
-
-        if kdist > 0
-            fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(kdist))
-            kl = (1-adj)*kval+adj*kl;
-        else
-            fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too high.\n", abs(kdist))
-            kh = (1-adj)*kval+(adj)*kh;
-        end
-    
-        kDist = abs(kdist);  
-        kval = .5*(kl + kh);
-    end
-
-    acond = compute.condense(Warray{i}, amu, agrid);
-    Votes_Pop = EVarray{i} < EVarray{1};
-    p = Votes_Pop.*acond;
-    parray{i} = sum(sum(p));
-    fprintf("Percentage Voting for Populists: %0.2f", parray{i});
-end 
-temp  = EVarray{i};
-newdir = strcat("../d/", folname);
-cd(newdir)
-
-filename = strcat("results_t",sprintf('%0.4f', 0), ...
-    "_eta", sprintf('%0.4f', eta(2)), ".mat");
-save(filename, 'adistr', "G","V", "wage", "r", "kagg", ...
-    "lamval", "eta", 'tgrid', 'growth_lagg', 'delta', 'alpha')
-
-filename = strcat("terms_struct_t", sprintf('%0.4f', 0), ...
-    "_eta", sprintf('%0.4f', eta(2)), ".mat");
-save(filename, "terms")
-
-cd ../../p/
-
-
-%% now changing growth paths
-
-for i = 1:2
-
-    adistr = zeros(nl, nmu);
-    
-    for im = 1:nmu
-        for il = 1:nl
-            adistr(il,im) = 1.0/(nmu*nl);
-        end
-    end
-    
-    growth_lagg = lagg*eta(1)*eta(2);
-
-
-    kDist = 10;
-    gDist = 10; 
-    f=10;  
-    
-    %init from eqm i've already solved for
-    kval = .5;
-    lamval = .6221;
-    ll = .25; lh = 1;
-    
-    DIST = max(kDist,gDist);
-    
-    while DIST > dTol*10
-    
-        fprintf("\n\n\n--------------------------------- > Lambda = %4.4f", lamval)
+        terms.tau = taugrid(j);
     
         while kDist > dTol
         
             fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
             fprintf("\nA guess: %4.8f. Begin iteration for solution...\n", kval)
             fprintf("\t Solving value function:\n")
+    
+            terms.r = vaas.calcr(alpha, delta, kval, eta);
+            terms.w = vaas.calcw(alpha, kval, eta);
+    
+            % we have to get the value of lambda such that taxation 
+            % is redistributing everything. aka BB
+            tot_inc = (terms.w*lgrid).*ldist;
+            tot_inc = sum(tot_inc);
+            denom = (terms.w*lgrid).^(1-terms.tau).*ldist;
+            denom = sum(denom);
+            terms.lamval = tot_inc/denom;
+    
+            iter_ct = 1;
+            dist = 10;
+            G = zeros(nl,na);
+    
+            % set up V so that it doesn't start empty
+            scale = 1;
+            for ia = 1:na
+                k_val = agrid(ia);
+                for il = 1:nl
+                    yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*phi;
+                    ymin = max(1e-10, yval);
+                    V(il, ia) = log(ymin);
+                end
+            end
             
-            % first getting equilibrium objects like prices, govt spending, etc
-            r = alpha*(kval^(alpha - 1)*(growth_lagg^(1-alpha))) - delta;
-            wage = (1-alpha)*((kval^(alpha))*(growth_lagg^(-alpha)));
-    
-            wage_inc_mu = repmat(wage*lgrid, nmu,1)';
-            cap_inc_mu = zeros(size(wage_inc_mu));
-            for il = 1:nl
-                cap_inc_mu(il, :) = repmat(r*amu, 1, 1)*(1-captax(il));
-            end
-            Tmu = zeros(nl, nmu, np);
-            for ip = 1:np
-                Tmu(:,:,ip) = wage_inc_mu - gov.tax(wage_inc_mu,lamval,tgrid(ip)) + ...
-                    cap_inc_mu;
+            %init expected vals
+            for ia = 1:na
+                for il = 1:nl
+                    EV(il, ia) = pil(il,:)*V(:,ia);
+                end
             end
     
-            G = sum(sum(Tmu(:,:,i).*adistr(:,:)));
-    
-            %prepare for VFI
-            terms = struct('alpha', alpha, ...
-                'beta', beta, ...
-                'sigma', sigma, ...
-                'phi', phi, ...
-                'agrid', agrid, ...
-                'lgrid', lgrid, ...
-                'pil', pil, ...
-                'lamval', 0, ...
-                'captax', captax, ...
-                'tau',0, ...
-                'G', G, ...
-                'p', p, ...
-                'K', kagg, ...
-                'L', growth_lagg, ...
-                'r', r, ...
-                'w', wage);
-        
-            fprintf("Solving value function:\n")
-    
-            [V, G, EV] = HH.solve(nl, na, terms, vTol);
-         
-    
-            fprintf("\tSolving asset distribution:\n")
-            [adistr, kagg] = HH.getDist(G, amu, agrid, pil);
-        
-    %         % CONDENSE DISTR
-            acond = compute.condense(adistr, amu, agrid);
+            while dist > vTol && iter_ct < 500
                 
-            kdist = kagg - kval;
+    %             if iter_ct < 400
+    %                 [TV, TG, ~, EV] = egm.solve(nl, na, terms, EV, V);
+    %             else 
+                    if iter_ct < 200
+                        sTol = 1e-4;
+                    else 
+                        sTol = 1e-6;
+                    end
+                    [TV, TG, EV] = compute.interpV(terms, V, EV, sTol);
+    %             end
         
+                vdist = compute.dist(TV,V,2);
+                gdist = compute.dist(TG,G,2);
+                dist = max(vdist,gdist);
+        
+                if mod(iter_ct, 50) == 0
+                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+                        "\n\t\t||TG - G|| = %4.6f", iter_ct, vdist, gdist);
+                end
+                iter_ct = iter_ct+1;
+    
+                V = TV;
+                G = TG;
+            end
+    
+            cap_inc = repmat((1+terms.r*agrid), nl,1);
+            wages = [terms.w*lgrid - gov.tax(terms.w*lgrid, terms.lamval, terms.tau)]';
+            wage_inc = repmat(wages,1,na);
+            y = cap_inc + wage_inc;
+       
+            Varray{i,j}= V;
+            Garray{i,j} = G;
+            EVarray{i,j} = EV; 
+    
+            [Warray{i,j}, Karray{i,j}] = HH.getDist(Garray{i,j}, amu, agrid, ...
+                pil, false);      
+        
+            kdist = Karray{i,j} - kval;
+        
+            %if you're looking at this, ignore it. it is chaos incarnate.
+            if kdist < 10
+                adj = .5;
+            else
+                adj = .7;
+            end
+    
             if kdist > 0
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too low.\n", abs(kdist))
-                kl = (kval+5*kl)/6;
+                kl = (1-adj)*kval+adj*kl;
             else
                 fprintf("\n||Kguess - Kagg|| = %4.5f. \tAggregate capital is too high.\n", abs(kdist))
-                kh = (kval+5*kh)/6;
+                kh = (1-adj)*kval+(adj)*kh;
             end
         
             kDist = abs(kdist);  
             kval = .5*(kl + kh);
         end
-        
-        t = adistr.*Tmu(:,:,i); %getting all taxes collected in A govt
-        t = sum(sum(t));
-        Y = kval^(alpha)*growth_lagg^(1-alpha);
-        gy = t/Y;
     
-        if gy<goal
-           fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
-               "\tTax rate is too high.\n\n", gy, lamval)
-           lh = (lamval*adj+(1-adj)*lh);
+        acond = compute.condense(Warray{i,j}, amu, agrid);
+        if i > 1
+            Votes_Pop = EVarray{i,j} < EVarray{1,j};
+            p = Votes_Pop.*acond;
+            ev_diff = EVarray{i,j} - EVarray{1,j};
+            meanEV_diffs(i,j) = mean(ev_diff(:));
+            stdEV_diffs(i,j)  = std(ev_diff(:));
+            maxEV_diffs(i,j)  = max(ev_diff(:));
+            minEV_diffs(i,j)  = min(ev_diff(:));
+    
         else
-           fprintf("\nGov't rev collected = %4.4f. Lam = %4.4f. " + ...
-               "\tTax rate is too low.\n\n", gy, lamval);
-           ll = (lamval*adj+(1-adj)*ll);
+            p = zeros(size(acond));
         end
-    
-        gDist = abs(gy-goal);
-        lamval = .5*(ll + lh);
-    
-        DIST = max(kDist, gDist);
-        fprintf("||DIST|| = %4.4f\n", DIST)
-        kl = klwrbnd*klmult;
-        kh = klwrbnd*khmult;
-        kDist = 10;
+
+        parray{i,j} = sum(sum(p));
+        fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
+
+        filename = strcat("results_rho85sig2_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
+        save(filename)
+
     end
-    
-    newdir = strcat("../d/", folname);
-    cd(newdir)
+end 
 
-    filename = strcat("results_transition_t",sprintf('%0.4f', tgrid(i)), ...
-        "_eta", sprintf('%0.4f', eta(i)), ".mat");
-    save(filename, 'adistr', "G","V", "wage", "r", "kagg", ...
-        "lamval", "eta", 'tgrid')
-
-    save("params", "terms")
-
-    cd ../../p/
-
-end
-
+cd ../../p/
