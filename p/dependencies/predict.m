@@ -132,103 +132,182 @@ classdef predict
             save transition_P_to_L_jan2025
         end
 
-        %% perfect foresight
+        %% perfect foresight for regimes
 
-        function [zt, yt, ct, kt] = perfectForesight(zt, kst, k0, lambda, params,dTol)
+        function [Rguess, pt, EVarray, Garray, Warray] = perfectForesight(kt, p0, terms, dTol)
 
-            alpha = params(1);
-            beta = params(2);
-            delta = params(3);
-            sigma = params(4);
-            L = params(5);
-
-            ist = delta*kstd;
-            cst = kst^alpha - ist;
-
-            T = size(zt, 2);
-            zt = zt(1:T-1);
-            kguess = repelem(kst, T-1);
-            kguess(1) = k0*kst;
-            
-            kprguess = repelem(0, T-1);
-            
-            dist = max(abs(kguess - kprguess));
-            
-            iter_ct = 1;
-            while dist > dTol
-            
-                yt = zt.*(kguess).^alpha*(L^(-alpha));
-                rt = alpha.*zt.*(kguess.^(alpha-1))*(L^(1-alpha)) - delta;
-            
-                ct = repelem(cst,T-1);
-                for i = flip(1:T-2)
-                    if sigma == 1
-                        ct(i) = ct(i+1)*((beta*(1+rt(i+1)))^(-1));
-                    else
-                        ct(i) = ct(i+1)*((beta*(1+rt(i+1)))^(-1/sigma));
-                    end
-                end
-                ct(T-1) = cst;
-            
-                kt = repelem(kst, T);
-                kt(1) = k0*kst;
-                for i = 1:T-1
-                    kt(i+1) = yt(i) - ct(i) + (1-delta)*kt(i);
-                end
-            
-                kprguess = lambda*kguess + (1-lambda)*kt(1:T-1);
-            
-                dist = max(abs(kprguess - kguess)); 
-            
-                fprintf("Iteration %i: ||K' - K|| = %4.8f\n", iter_ct, dist);
-            
-                iter_ct = iter_ct + 1;
-                kguess = kprguess;
-            end
-        end
-
-        function [V, G] = solve(nl, na, terms, agrid, lgrid)
-
-            r = terms.r;
-            w = terms.w;
+            T = length(kt);
+            etagrid = terms.etagrid;
+            taugrid = terms.taugrid;
+            agrid = terms.agrid;
+            amu = terms.amu;
+            alpha = terms.alpha;
+            delta = terms.delta;
             pil = terms.pil;
 
-            V = zeros(nl,na);
-            % set up V so that it doesn't start empty
-            scale = 1;
-            for ia = 1:na
-                k_val = agrid(ia);
-                for il = 1:nl
-                    yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*0;
-                    ymin = max(1e-10, yval);
-                    V(il, ia) = log(ymin);
+            nl = length(terms.lgrid); na = length(terms.agrid);
+
+            Varray = cell(T, 2);
+            Garray = cell(T, 2);
+            EVarray = cell(T,2);
+            Warray = cell(T,1);
+
+            %dynamic tracking
+            ptguess = ones(T,1)*p0;
+            Rguess = ptguess<.5+1;
+            pt = ptguess;
+            Rt = Rguess;
+            EVgap = zeros(T,1);
+
+            fprintf("Solving end steadystate vals.\n")
+            EVguess = zeros(length(terms.lgrid), length(terms.agrid));
+            K = kt(T);
+            % solve for VT:
+            terms.r = vaas.calcr(alpha, delta, K, etagrid(1));
+            terms.w = vaas.calcw(alpha, K, etagrid(1));
+            terms.tau = taugrid(1);
+            [Varray{T,1}, Garray{T,1}] = solve.interpV(nl, na, EVguess, terms, dTol/100);
+
+            terms.r = vaas.calcr(alpha, delta, K, etagrid(2));
+            terms.w = vaas.calcw(alpha, K, etagrid(2));
+            terms.tau = taugrid(2);
+            [Varray{T,2}, Garray{T,2}] = solve.interpV(nl, na, EVguess, terms,  dTol/100);
+
+            EVarray{T,1} = predict.getExpectation(Varray{T,1}, pil);
+            EVarray{T,2} = predict.getExpectation(Varray{T,2}, pil);
+            [Warray{T}, ~] = HH.getDist(Garray{T,(p0>.5)+1}, amu, agrid, pil, false);
+            acond = compute.condense(Warray{T}, amu, agrid);
+            VOTES = EVarray{T,1} > EVarray{T,2};
+            VOTES = acond .* VOTES;
+            ptguess(T) = sum(sum(VOTES));
+            Rguess(T) = (ptguess(T) > 0.5) + 1;
+
+            Rguess(T) = (p0>.5)+1;
+
+            fprintf("\nSolving beginning steadystate vals.\n")
+            % period 1 value function
+            K = kt(1);
+            % solve for VT:
+            terms.r = vaas.calcr(alpha, delta, K, etagrid(1));
+            terms.w = vaas.calcw(alpha, K, etagrid(1));
+            terms.tau = taugrid(1);
+            [Varray{1,1}, Garray{1,1}] = solve.interpV(nl, na, EVguess, terms, dTol);
+
+            terms.r = vaas.calcr(alpha, delta, K, etagrid(2));
+            terms.w = vaas.calcw(alpha, K, etagrid(2));
+            terms.tau = taugrid(2);
+            [Varray{1,2}, Garray{1,2}] = solve.interpV(nl, na, EVguess, terms, dTol);
+
+            EVarray{1,1} = predict.getExpectation(Varray{1,1}, pil);
+            EVarray{1,2} = predict.getExpectation(Varray{1,2}, pil);
+
+            [Warray{1}, ~] = HH.getDist(Garray{1,Rt(1)}, amu, agrid, pil, false);
+            acond = compute.condense(Warray{1}, amu, agrid);
+            VOTES = EVarray{1,1} > EVarray{1,2};
+            VOTES = acond .* VOTES;
+            ptguess(1) = sum(sum(VOTES));
+            Rguess(1) = (ptguess(1) > 0.5) + 1;
+
+            %to do: 1. make sure I get starting and ending regimes right
+            % 2. make sure I'm getting regime convergence right
+            % 3. save the distributions so I can solve the distributions 
+            % forward.
+
+            pdist = 10;
+            iter = 1;
+            while pdist > dTol
+
+                fprintf("\nIteration %i \n", iter);
+                fprintf("\tBackwards pass...\n")
+                % backwards pass
+                for t = T-1:-1:1
+                    if mod(t,50) == 0
+                        fprintf("t = %i ...", t);
+                    end
+                    K = kt(t);
+                    pguess = pt(t+1);
+                    pnew = 0; inner_iter = 1; dist = 10;
+                    EV = pguess*EVarray{t+1,1} + (1-pguess)*(EVarray{t+1,2});
+                    
+                    while dist > 0.001
+                        R = (pguess < .5) + 1;        
+                        terms.r = vaas.calcr(alpha, delta, K, etagrid(1));
+                        terms.w = vaas.calcw(alpha, K, etagrid(1));
+                        terms.tau = taugrid(1);
+                        [Varray{t,1}, Garray{t,1}] = compute.backsolve(terms, EV, dTol);
+    
+                        terms.r = vaas.calcr(alpha, delta, K, etagrid(2));
+                        terms.w = vaas.calcw(alpha, K, etagrid(2));
+                        terms.tau = taugrid(2);
+                        [Varray{t,2}, Garray{t,2}] = compute.backsolve(terms, EV, dTol);
+    
+                        EVarray{t,1} = predict.getExpectation(Varray{t,1}, pil);
+                        EVarray{t,2} = predict.getExpectation(Varray{t,2}, pil);
+                        EVgap(t) = sum(sum(EVarray{t,1}-EVarray{t,2}));
+                        EV = pguess*EVarray{t+1,1} + (1-pguess)*(EVarray{t+1,2});
+
+                        [W, K] = HH.getDist(Garray{1,R}, amu, agrid, pil, false);   
+                        acond = compute.condense(W, amu, agrid);
+                        VOTES = EVarray{t,1} > EVarray{t,2};
+                        VOTES = acond .* VOTES;
+                        pnew = sum(sum(VOTES));
+                        if inner_iter > 100
+                            warning("pt(t) not converging at t = %d", t);
+                            break
+                        elseif mod(inner_iter,50) == 0
+                            fprintf("\t\tInner iter: %i \n", inner_iter)
+                        end
+                        inner_iter=inner_iter+1;
+                        dist = abs(pguess-pnew);
+                        pguess = pnew;
+                    end
+                    pt(t) = pnew;
                 end
+                Rt = (pt<.5)+1;
+                
+                [Warray{1}, ~] = HH.getDist(Garray{1,Rt(1)}, amu, agrid, pil, false);   
+                acond = compute.condense(Warray{1}, amu, agrid);
+                VOTES = EVarray{1,1} > EVarray{1,2};
+                VOTES = acond .* VOTES;
+                ptguess(1) = sum(sum(VOTES));
+                Rguess(1) = (ptguess(1) > 0.5) + 1;
+
+                fprintf("\tForwards pass...\n")
+                % forwards pass: updating capital path
+                for t = 2:1:T-1
+                    if mod(t,50) == 0
+                        fprintf("t = %i ...", t);
+                    end  
+                    % get today's distribution
+                    G = Garray{t};
+                    [Warray{t}, Kagg] = HH.transitDistr(G, Warray{t-1}, ...
+                        amu, agrid, pil);
+    
+                    acond = compute.condense(Warray{t,1}, amu, agrid);
+                    VOTES = EVarray{t,1} > EVarray{t,2};
+                    VOTES = acond.*VOTES;
+                    ptguess(t) = sum(sum(VOTES));
+    
+                    Rguess(t) = (ptguess(t)>.5) + 1;
+                end
+                
+                pdist = sum(abs(ptguess - pt));  
+                pt = .5*ptguess + .5*pt;
+                fprintf("\n Pdist = %0.4f \n", pdist);
+                iter = iter+1;
             end
-            
-            %init expected vals
+
+        end
+
+        % get expectation 
+        function EV = getExpectation(V, pil)
+
+            [nl, na] = size(V);
+            EV = zeros(size(V));
             for ia = 1:na
                 for il = 1:nl
                     EV(il, ia) = pil(il,:)*V(:,ia);
                 end
-            end
-    
-            dist = 10; iter_ct = 1; vTol = 1e-4;
-            G = zeros(size(V))3
-            while dist > vTol && iter_ct < 500
-                  [TV, TG, EV] = compute.interpV(terms, V, EV, vTol);
-        
-                vdist = compute.dist(TV,V,2);
-                gdist = compute.dist(TG,G,2);
-                dist = max(vdist,gdist);
-        
-%                 if mod(iter_ct, 50) == 0
-%                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-%                         "\n\t\t||TG - G|| = %4.6f", iter_ct, vdist, gdist);
-%                 end
-                iter_ct = iter_ct+1;
-
-                V = TV;
-                G = TG;
             end
         end
     end

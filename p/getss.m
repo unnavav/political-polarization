@@ -137,16 +137,16 @@ cd(newdir)
 
 for i = 1:neta
     eta = etagrid(i);
-    kl = 0;
-    kh = 15;
-    kval = (kl + kh)/2;
-    kDist = 10;
-    fprintf("Migration Rate: %0.4f\n", eta);
 
     for j = 1:ntau
 
         terms.tau = taugrid(j);
-    
+        fprintf("Migration Rate: %0.4f, Progressivity: %0.4f\n", eta, terms.tau);
+
+        kl = 0;
+        kh = 15;
+        kval = (kl + kh)/2;
+        kDist = 10;
         while kDist > dTol
         
             fprintf("\n*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*-_-*")
@@ -212,12 +212,7 @@ for i = 1:neta
                 V = TV;
                 G = TG;
             end
-    
-            cap_inc = repmat((1+terms.r*agrid), nl,1);
-            wages = [terms.w*lgrid - gov.tax(terms.w*lgrid, terms.lamval, terms.tau)]';
-            wage_inc = repmat(wages,1,na);
-            y = cap_inc + wage_inc;
-       
+           
             Varray{i,j}= V;
             Garray{i,j} = G;
             EVarray{i,j} = EV; 
@@ -255,7 +250,6 @@ for i = 1:neta
             stdEV_diffs(i,j)  = std(ev_diff(:));
             maxEV_diffs(i,j)  = max(ev_diff(:));
             minEV_diffs(i,j)  = min(ev_diff(:));
-    
         else
             p = zeros(size(acond));
         end

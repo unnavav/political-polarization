@@ -248,16 +248,14 @@ classdef compute
         end
 
         function distr = condense(adistr, amu, agrid)
-            [nl, nmu, np] = size(adistr);
+            [nl, nmu] = size(adistr);
             [na] = length(agrid);
-            distr = zeros(nl, na, np);
+            distr = zeros(nl, na);
             for im = 1:nmu
                 [ix, we] = compute.weight(agrid, amu(im));
 
-                for ip = 1:np
-                    distr(:, ix, ip) = distr(:, ix, ip) + we*adistr(:, im, ip);
-                    distr(:, ix+1, ip) = distr(:, ix+1, ip) + (1-we)*adistr(:, im, ip);
-                end
+                distr(:, ix) = distr(:, ix) + we*adistr(:, im);
+                distr(:, ix+1) = distr(:, ix+1) + (1-we)*adistr(:, im);
             end
         end
    
@@ -300,6 +298,39 @@ classdef compute
 
         end
 
+        function [V, G] = backsolve(terms,EV,vTol)
+
+            beta = terms.beta;
+            sigma = terms.sigma;
+            pil = terms.pil;
+            agrid = terms.agrid;
+            lgrid = terms.lgrid;
+            na = length(agrid); nl = length(lgrid);
+            r = terms.r;
+            w = terms.w;
+            lambda = terms.lamval;
+            tau = terms.tau;
+            captax = terms.captax;
+            G = zeros(size(EV)); V = G;
+
+            % now gss over spline to get new V, G.
+            for il = 1:nl
+                l = lgrid(il);
+                tau_r = captax(il);
+                for ia = 1:na
+                    a = agrid(ia);
+                    y = gov.tax(w*l,lambda, tau) + (1+r*(1-tau_r))*a;
+                    ix = sum(agrid <= y);
+                    ix = max(ix, 1);  % ensure at least one index
+                    searchgrid = agrid(1:ix);
+                    [vval, aval] = compute.gss(EV(il,:),y, beta, ...
+                        sigma, searchgrid, vTol*1e-2);
+                    V(il, ia) = vval;
+                    G(il, ia) = aval;
+                end
+            end
+
+        end
 
     end
 

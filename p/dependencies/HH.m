@@ -159,7 +159,7 @@ classdef HH
         function [mu1, kagg] = getDist(G, amu, agrid, pil, verbose)
 
             [nl, ~] = size(G);
-            [~, nmu] = size(amu);
+            nmu = length(amu);
             mu = zeros(nl, nmu);
 
             %nomenclature: ixagrid is indices for HH a for both parties.
@@ -187,7 +187,7 @@ classdef HH
             % in power
             mu = ones(size(mu))*(1/(nmu*nl));
 
-            while (distance > 1e-6 & iter_ct < 3000)
+            while (distance > 1e-6 && iter_ct < 3000)
                 
                 mu1 = zeros(size(mu));
                 
@@ -263,6 +263,7 @@ classdef HH
                 end
             end
                 
+
             mu1 = zeros(size(mu));
             
             for im = 1:nmu

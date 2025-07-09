@@ -7,98 +7,63 @@
 % this code takes the decision and voting rules of the household from pop-
 % ulism to liberalism, then saves that as the expectation
 
+cd C:\VAASAVI\Dropbox\Education\OSU\Ongoing_Research\Populism\political-polarization\p
 restoredefaultpath;
 clear all; clc;
 addpath(genpath(pwd));
 
 %% importing liberalist household
 
-cd ..\d\liberalism_populism
-
-load results_t0.0000_eta1.0000.mat
-
-VP = V;
-GP = G;
-adistrP = adistr;
-rP = r;
-lP = growth_lagg;
-
-mkdir("results_t0.0000_eta1.0000")
-cd results_t0.0000_eta1.0000\
-writematrix(V,"V.csv");
-writematrix(G,"G.csv");
-writematrix(adistr, "adistr.csv");
-writematrix(r, "r.csv");
-writematrix(growth_lagg, "l.csv");
-cd ..
-
-load terms_struct_t0.0000_eta1.0000.mat
-termsP = terms;
-
-load results_t0.0000_eta1.1000.mat
-VL = V;
-GL = G;
-adistrL = adistr;
-rL = r;
-lL = growth_lagg;
-
-mkdir("results_t0.0000_eta1.1000")
-cd results_t0.0000_eta1.1000\
-writematrix(V,"V.csv");
-writematrix(G,"G.csv");
-writematrix(adistr, "adistr.csv");
-writematrix(r, "r.csv");
-writematrix(growth_lagg, "l.csv");
-cd ..
-
-load terms_struct_t0.0000_eta1.1000.mat
-termsL = terms;
-
-load results_transition_t0.0500_eta1.1000.mat
-VLP = V;
-GLP = G;
-adistrLP = adistr;
-rLP = r;
-
-load results_transition_t0.1500_eta1.0000.mat
-VPL = V;
-GPL = G;
-adistrPL = adistr;
-rPL = r;
-
+cd ..\d\rsteadystates
+load results_rho85sig2_t_35_eta13.mat
 cd ../../p
 
 %% now to do perfect foresight transitions
 
-% give a series of interest rates that switch partway through
+% we're doing perfect foresight over regime transitions, so it has to be 
+% consistent with that. In particular 
 
-%lagg will change; first period and then the growth rate changes, 
-% which means new prices for everything
-lt = [lP repelem(lL, T-1)];
+terms.etagrid = [etagrid(1) etagrid(3)];
+terms.taugrid = [taugrid(5) taugrid(3)];
 
-r0 = 0.0454;
-r1 = .1042;
+T = 300;                 % number of periods
+Kss = kval;               % steady-state capital level
+rho = 0.85;              % persistence
+shock_size = 0.02;        % 30% deviation from Kss
 
-alpha = 0.36; delta = 0.06;                                                                                                                                                                                                                                                                                                                                                                                                                              
+K_neg = zeros(T,1);
+K_neg(1) = Kss * (1 - shock_size);  % start with 30% drop
+
+for t = 2:T
+    K_neg(t) = Kss + rho * (K_neg(t-1) - Kss);  % mean-revert
+end
+
+kt = [Kss K_neg'];
+
+% % give a series of capital bumpsthat switch partway through
+% T = 100;
+% shock_range = 0.01;
+% rng(7644870);             
+% Kss = Karray{3, 1};
+% X = (2*shock_range).*rand(T-1,1) - shock_range;  % U(-0.1, +0.1)
+% K = Kss .* (1 + X);
+% 
+% kt = [Kss K' repelem(Kss, 100)];
 
 terms.alpha = alpha;
 terms.delta = delta;
-lt = [logspace(0,.01,10) repelem(1.01, T-10)];
+terms.beta = beta;
 
-lambda = 0.3;
+%increasing the 
+agrid = compute.logspace(agrid(1), 100, na);
+amu = compute.logspace(agrid(1), agrid(na), nmu);
+terms.agrid = agrid;
+terms.amu = amu';
 
-transition(r0, r1, lt, terms, dTol, lambda)
+p0 = p;
 
-r0 = rL;
-r1 = rP;
+dTol = 1e-4;
+[Rguess, pt, EVarray, Garray, Warray] = predict.perfectForesight(kt, p0, terms, dTol);
 
-rtest = 0.0379;
-r1 = rtest;
-ltest =  1.2198;
-lt = [lL repelem(lP, T-1)];
-
-lambda = 0.3;
-
-[rt, wt, Kt] = transition(r0, r1, lt, terms, dTol, lambda);
-
-save transition_L_to_P_jan2025
+cd ../d/
+save kwiggles_guess_eta13_tau35_april2025
