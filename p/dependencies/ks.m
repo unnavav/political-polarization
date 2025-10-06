@@ -114,10 +114,10 @@ classdef ks
             dist = 1e5;
             iter_ct = 1;
             
-            %broadcasting, babyyyyyyyyyyy
             %forecasting K once, because the forecast only happens once
             
-            Kpr = ks.forecast(Kfore, Kgrid');
+            Kpr = ks.forecastK(Kfore, Kgrid', R);
+            Rpr = ks.forecastR(Rfore, Kgrid', R);
 
             %getting linear interpolation grid once too. 
             [ix, we] = ks.weight(Kgrid, Kpr);
@@ -200,14 +200,24 @@ classdef ks
 
         end
 
-        function kpr = forecast(fore,k)
-            %k: nm x 1
-            one_k = [ones(size(k(:))) log(k(:))]; % ==> one_kd = nm x 2
-            %fore: (nR*nd) x 2
-            kguess = fore*one_k'; % ==> kguess = (nR*nd) x nm
-            kpr =  exp(kguess);
+        function kpr = forecastK(fore,k,R)
+            %coeffs = nk x 2
+            coeffs = squeeze(fore(R,:,:));
+
+            % preds = nk x 2
+            preds = [ones(length(k),1), log(k)'];
+            preds = preds'; % 2 x nk
+            kpr= diag(coeffs*preds); % this is, i think, a totally insane way of doing things
         end
 
+        function pr = forecastP(fore,k,R)
+            % nk x 2
+            coeffs = squeeze(fore(R,:,:));
+
+            % preds = nk x 2
+            preds = [ones(length(k),1), log(k)'];
+            pr = (1+exp(sum(coeffs.* preds, 2)))^-1;    
+        end
 
         function [ixmat, wemat] = weight(Kgrid, Kpr)
 

@@ -85,6 +85,7 @@ classdef predict
                 else
                     vTol = 1e-6;
                 end
+
                 fprintf("_Iteration %i_\n", iter_ct);
                 for t = (T-1):-1:2
     
@@ -158,6 +159,7 @@ classdef predict
             pt = ptguess;
             Rt = Rguess;
             EVgap = zeros(T,1);
+            polper = .5; %policy persistence coefficient
 
             fprintf("Solving end steadystate vals.\n")
             EVguess = zeros(length(terms.lgrid), length(terms.agrid));
@@ -208,11 +210,8 @@ classdef predict
             ptguess(1) = sum(sum(VOTES));
             Rguess(1) = (ptguess(1) > 0.5) + 1;
 
-            %to do: 1. make sure I get starting and ending regimes right
-            % 2. make sure I'm getting regime convergence right
-            % 3. save the distributions so I can solve the distributions 
-            % forward.
-
+            % so then do I guess the start and end based on... what?
+            % what???
             pdist = 10;
             iter = 1;
             while pdist > dTol
@@ -224,46 +223,7 @@ classdef predict
                     if mod(t,50) == 0
                         fprintf("t = %i ...", t);
                     end
-                    K = kt(t);
-                    pguess = pt(t+1);
-                    pnew = 0; inner_iter = 1; dist = 10;
-                    EV = pguess*EVarray{t+1,1} + (1-pguess)*(EVarray{t+1,2});
-                    
-                    while dist > 0.001
-                        R = (pguess < .5) + 1;        
-                        terms.r = vaas.calcr(alpha, delta, K, etagrid(1));
-                        terms.w = vaas.calcw(alpha, K, etagrid(1));
-                        terms.tau = taugrid(1);
-                        [Varray{t,1}, Garray{t,1}] = compute.backsolve(terms, EV, dTol);
-    
-                        terms.r = vaas.calcr(alpha, delta, K, etagrid(2));
-                        terms.w = vaas.calcw(alpha, K, etagrid(2));
-                        terms.tau = taugrid(2);
-                        [Varray{t,2}, Garray{t,2}] = compute.backsolve(terms, EV, dTol);
-    
-                        EVarray{t,1} = predict.getExpectation(Varray{t,1}, pil);
-                        EVarray{t,2} = predict.getExpectation(Varray{t,2}, pil);
-                        EVgap(t) = sum(sum(EVarray{t,1}-EVarray{t,2}));
-                        EV = pguess*EVarray{t+1,1} + (1-pguess)*(EVarray{t+1,2});
-
-                        [W, K] = HH.getDist(Garray{1,R}, amu, agrid, pil, false);   
-                        acond = compute.condense(W, amu, agrid);
-                        VOTES = EVarray{t,1} > EVarray{t,2};
-                        VOTES = acond .* VOTES;
-                        pnew = sum(sum(VOTES));
-                        if inner_iter > 100
-                            warning("pt(t) not converging at t = %d", t);
-                            break
-                        elseif mod(inner_iter,50) == 0
-                            fprintf("\t\tInner iter: %i \n", inner_iter)
-                        end
-                        inner_iter=inner_iter+1;
-                        dist = abs(pguess-pnew);
-                        pguess = pnew;
-                    end
-                    pt(t) = pnew;
                 end
-                Rt = (pt<.5)+1;
                 
                 [Warray{1}, ~] = HH.getDist(Garray{1,Rt(1)}, amu, agrid, pil, false);   
                 acond = compute.condense(Warray{1}, amu, agrid);
@@ -275,26 +235,9 @@ classdef predict
                 fprintf("\tForwards pass...\n")
                 % forwards pass: updating capital path
                 for t = 2:1:T-1
-                    if mod(t,50) == 0
-                        fprintf("t = %i ...", t);
-                    end  
-                    % get today's distribution
-                    G = Garray{t};
-                    [Warray{t}, Kagg] = HH.transitDistr(G, Warray{t-1}, ...
-                        amu, agrid, pil);
-    
-                    acond = compute.condense(Warray{t,1}, amu, agrid);
-                    VOTES = EVarray{t,1} > EVarray{t,2};
-                    VOTES = acond.*VOTES;
-                    ptguess(t) = sum(sum(VOTES));
-    
-                    Rguess(t) = (ptguess(t)>.5) + 1;
+
                 end
                 
-                pdist = sum(abs(ptguess - pt));  
-                pt = .5*ptguess + .5*pt;
-                fprintf("\n Pdist = %0.4f \n", pdist);
-                iter = iter+1;
             end
 
         end
