@@ -14,6 +14,7 @@
 
 restoredefaultpath;
 clear all; clc;
+cd ..
 addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
@@ -257,7 +258,7 @@ for i = 1:neta
         parray{i,j} = sum(sum(p));
         fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
 
-        filename = strcat("results_rho85sig2_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
+        filename = strcat("results_rho90sig2_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
         save(filename)
 
     end

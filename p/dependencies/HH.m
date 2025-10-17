@@ -340,5 +340,14 @@ classdef HH
                 utils = ((y-apr)^(1-sigma))/(1-sigma) + beta*vc;
             end
         end
+
+        function utils = u(c, sigma)
+            c = max(c, 1e-12);                 % floor for safety
+            if sigma == 1
+                utils = log(c);
+            else
+                utils = (c.^(1-sigma))./(1-sigma);
+            end
+        end
     end
 end
