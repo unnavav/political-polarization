@@ -21,11 +21,11 @@ vTol = 1e-6;
 alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 
 % grid sizes
-nl = 7; na = 250; nmu = na*10; nr = 2; nk = round(na/10);
+nl = 7; na = 100; nmu = na*10; nr = 2; nk = 13;
 
-alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
+alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 
-al = 0; ah = 100;
+al = 0; ah = 200;
 % get labor distribution and aggregate values
 %step 1: make labor grid and labor transition matrix
 
@@ -50,17 +50,13 @@ pid = [.95 0.05; 0.05 .95];
 dgrid = [0.02 -0.02];
 
 agrid = compute.logspace(al, ah, na)';
+nmu = na*10;
+amu = linspace(agrid(1), agrid(na), nmu);
 
 verbose = true;
 
 % set size of aggregate moment grid
-Kgrid = linspace(8, 11, nk);
-
-% temp placement, two coefficients each from model
-Kfore = [-0.6568, 0.8283;
-    -0.6812, 0.8213];
-Rfore = [.7 .3; ...
-          .3 .7]; % deterministic
+Kgrid = linspace(7, 45, nk);
 
 % definitions for the probability of changing regime
 probscale1 = 10;
@@ -69,8 +65,28 @@ probscale2 = 10;
 phis = [probscale1 probscale2];
 
 % finally set policies
-taul = 0.08; taup = 0.18; etal = .45; etap = 0;
+taul = 0.086; taup = 0.181; etal = .5; etap = 0;
 
+taugrid = [taup taul]; etagrid = [etap etal];
+
+captax = [.15 .15 .15 .15 .20 .20 .20];
+
+% we also need the scaling grid for lambda to go in:
+stationary_pil = asymptotics(dtmc(pil));      % nl x 1
+Eeps     = stationary_pil*lgrid';              % sum ε Ω
+Eeps_sum = sum(Eeps);
+
+Eeps_pow = sum((lgrid'.^(1 - taugrid)) .* stationary_pil'); % sum ε^(1-τ) Ω  (τ regime-specific)
+
+lambda_ratio = Eeps_sum ./ Eeps_pow;   
+
+
+% start with a forecast that's basically steady state:
+Kfore = [.1 .99; ...
+          .08 .99];
+
+Rfore = [2.2 8; ...
+          -2.2 8];% trying a different form 
 %% prep VFI
 
 terms = struct('alpha', alpha, ...
@@ -84,12 +100,12 @@ terms = struct('alpha', alpha, ...
     'Kfore', Kfore, ...
     'Rfore', Rfore, ...
     'dgrid', dgrid, ...
-    'captax', zeros(1,nl), ...
-    'taugrid', [taup taul], ...
+    'captax', captax, ...
+    'taugrid', taugrid, ...
     'G', 0, ...
     'Kgrid', Kgrid, ...
-    'etagrid', [etap etal], ...
-    'lamval', 0, ...
+    'etagrid', etagrid, ...
+    'lamval', lambda_ratio, ...
     'phis', phis, ...
     'rnseed', 1234567);
 
@@ -108,7 +124,6 @@ foredist = 10;
 modelfun = @(b, x)(1+exp(b(1)+b(2)*x))^-1;
 beta0 = [.5 5];
 %% begin iteration
-
 Rt = rand(T,1);
 
 % closing in on this bitch
@@ -132,6 +147,12 @@ while foredist > vTol
     fprintf("\nGetting Regression Data\n")
     [Kprdat Rdata Prdata V G EV] = ks.getRegData(Rt, terms, vTol, verbose);
 
+%     [w1 kagg1] = HH.getDist(squeeze(G(1,1,:,:)), amu, agrid, pil, verbose);
+%     [w2 kagg2] = HH.getDist(squeeze(G(25,1,:,:)), amu, agrid, pil, verbose);
+% 
+%     [wl kaggl] = HH.getDist(squeeze(G(1,2,:,:)), amu, agrid, pil, verbose);
+%     [wp kaggp] = HH.getDist(squeeze(G(1,1,:,:)), amu, agrid, pil, verbose);
+
     Varray{iter_ct} = V;
     EVarray{iter_ct} = EV;
     Garray{iter_ct} = G;
@@ -140,7 +161,61 @@ while foredist > vTol
     K2 = Kprdat(Rdata == 2);
     Pr1 = Prdata(Rdata == 1);
     Pr2 = Prdata(Rdata == 2);
+    
+    K_next = log(Kprdat(2:end));
+    K_curr = log(Kprdat(1:end-1));
+    R_curr = Rdata(1:end-1);
 
-    logit1 = fitnlm(K1, Pr1, beta0, modelfun);
+    X = [ones(size(K_curr)), K_curr];
 
+    % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
+    if sum(R_curr == 1) > 0
+        kmdl1 = fitlm(X(R_curr==1,:), K_next(R_curr==1));
+        b1 = kmdl1.Coefficients.Estimate(2:3);
+    end
+    if sum(R_curr == 2) > 0
+        kmdl2 = fitlm(X(R_curr==2,:), K_next(R_curr==2));
+        b2 = kmdl1.Coefficients.Estimate(2:3);
+    end
+    Kfore_new = [b1'; b2'];
+
+    % Regime law: Pr(R_{t+1}=1 | R_t, K_t) = logit(d(R_t)+e(R_t) log K_t)
+    % Do two logits conditioned on current regime:
+    mdl1 = fitglm(K_curr(R_curr==1), Prdata(R_curr==1), ...
+                  'Distribution','binomial','Link','logit','Intercept',true);
+    mdl2 = fitglm(K_curr(R_curr==2), Prdata(R_curr==2), ...
+                  'Distribution','binomial','Link','logit','Intercept',true);
+    Rfore_new = [mdl1.Coefficients.Estimate'; mdl2.Coefficients.Estimate'];  % [d1 e1; d2 e2]
+    
+
+    % Damping (crucial for KS stability)
+    Kfore = 0.5*Kfore + 0.5*Kfore_new;
+    Rfore = 0.5*Rfore + 0.5*Rfore_new;
+    
+    % Forecaster distance
+    foredist = max( [norm(Kfore_new-Kfore, 'inf'), norm(Rfore_new-Rfore, 'inf')] );
+
+    fprintf("\nCapital: R2 for pop = %0.6f\nR2 for lib = %0.6f", ...
+        kmdl1.Rsquared.Adjusted, ...
+        kmdl2.Rsquared.Adjusted)
+    fprintf("\nRegime: R-sq for pop = %0.6f\nR2 for lib = %0.6f", mdl1.Rsquared.ordinary, ...
+        mdl2.Rsquared.ordinary)
+    fprintf("\nForedist = %0.6f\n\n", foredist)
+%     % only once we start getting to a place where beliefs show up, I guess?
+%     if ~(isempty(K1) || isempty(K2))
+%         break
+%         logit1 = fitnlm(K1, Pr1, beta0, modelfun);
+%     else
+%         fprintf("\n Kgrid not correct maybe?\n")
+%         K_min = min(Kprdat);
+%         K_max = max(Kprdat);
+%         buffer = 0.15;  % 15% slack
+%         Kgrid = linspace((1-buffer)*K_min, (1+buffer)*K_max, nk);
+%         terms.Kgrid = Kgrid;
+%         disp(Kgrid);
+%     end
+
+    iter_ct = iter_ct + 1;
 end
+
+save ../d/ks_rmseed_in_pr

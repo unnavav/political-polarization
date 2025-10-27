@@ -5,20 +5,17 @@ classdef gov
             net = lambda*(gross.^(1-tau));
         end
 
-        function Pr = getVoteShare(Vote_KR, adistr, amu, agrid)
+        function Pr = getVoteShare(votes_today, adistr, amu, agrid)
 
             acond = compute.condense(adistr,amu,agrid);
-            Pr = sum(sum(Vote_KR.*acond));
+            Pr = sum(sum(votes_today.*acond));
 
         end
 
-        function R = getR(phis, Theta, r, rnseed)
-            
-            rng(rnseed);
-            prob1 = (exp(-phis(r)*(Theta-0.5)))^-1;
-            draw = rand(1);
+        function R = getR(phis, Theta, r, prdraw)
+            prob1 = 1 ./ (1 + exp(-phis(r) * (Theta - 0.5)));
 
-            R = 2 - (prob1>=draw);
+            R = 2 - (prob1>=prdraw);
 
         end
 

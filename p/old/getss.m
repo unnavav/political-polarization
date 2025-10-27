@@ -244,7 +244,7 @@ for i = 1:neta
     
         acond = compute.condense(Warray{i,j}, amu, agrid);
         if i > 1
-            Votes_Pop = EVarray{i,j} < EVarray{1,j};
+            Votes_Pop = EVarray{i,j} > EVarray{i,1};
             p = Votes_Pop.*acond;
             ev_diff = EVarray{i,j} - EVarray{1,j};
             meanEV_diffs(i,j) = mean(ev_diff(:));

@@ -18,7 +18,6 @@ classdef egm
 
             phi = 1;
 
-            %endogrid choice %TODO: cummax? 
             endoK = zeros(size(V));
             TV = endoK;
             D = egm.numdev(V0, agrid);
@@ -28,7 +27,7 @@ classdef egm
                     l = lgrid(il);
 
                     c = (beta*D(il, ia))^(-1/sigma);
-                    y = (w*l - gov.tax(w*l, lamval, tau));
+                    y = gov.tax(w*l, lamval, tau);
                     
                     numerator = c + kpr - y;
                     denom = (1+r*(1-captax(il))); % TODO: check phi in right place
@@ -66,7 +65,7 @@ classdef egm
                     l = lgrid(il);
 
                     c = (1 + r*(1 - captax(il))) * agrid(ia) ...
-                        + w*l - gov.tax(w*l, lamval, tau) - G(il, ia);
+                        + gov.tax(w*l, lamval, tau) - G(il, ia);
 
                     C(il, ia) = max(1e-6, c);
 

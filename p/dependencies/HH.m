@@ -257,6 +257,7 @@ classdef HH
                     %split between rep and dem capital choices
                     kdval = G(il,ix)*we + G(il,ix+1)*(1.0 - we);
 
+                    kdval = min(max(kdval, amu(1)), amu(end));
                     [ix, we] = compute.weight(amu, kdval);
                     ixgrid(il, im) = ix;
                     wegrid(il, im) = we;
