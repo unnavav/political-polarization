@@ -3,13 +3,13 @@ load ks_rmseed_in_pr_exo_R
 Kfore1 = Kfore(1,:);
 Kfore2 = Kfore(2,:);
 
-x = 5:.2:20;
+x = Kgrid;
 y1 = exp(Kfore1(1) + Kfore1(2)*log(x));
 y2 = exp(Kfore2(1) + Kfore2(2)*log(x));
 hold on
 plot(x, y1, 'LineWidth', 2, 'Color', '#034C53')
 plot(x, y2', 'LineWidth', 2, 'Color', '#F38C79')
-
+plot(Kgrid, Kgrid, '-k')
 xlabel('Current Capital $K$', ...
       'FontSize', 18, 'Interpreter', 'latex');
 ylabel('Future Capital $K$', ...
@@ -24,7 +24,6 @@ legend(legendEntries, 'Location', 'bestoutside', 'FontSize', 18,'Interpreter', '
 hold off
 
 
-load ks_rmseed_in_pr_exo_R
 y3 = exp(Kfore1(1) + Kfore1(2)*log(x));
 y4 = exp(Kfore2(1) + Kfore2(2)*log(x));
 

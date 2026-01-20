@@ -22,7 +22,7 @@ addpath(genpath(pwd));
 
 %% params
 vTol = 1e-5; dTol = 1e-2;
-alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 1; phi = 0;
+alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 
 neta = 20;
 ntau = 20;
@@ -93,8 +93,6 @@ captax = repelem(0, nl);
 
 G = [0 0];
 
-
-
 kDist = 10;
 gDist = 10; 
 
@@ -136,7 +134,7 @@ mkdir("../d/",folname)
 newdir = strcat("../d/", folname);
 cd(newdir)
 
-for i = 1:neta
+for i = 4:neta
     eta = etagrid(i);
 
     for j = 1:ntau
@@ -187,33 +185,47 @@ for i = 1:neta
                 end
             end
     
-            while dist > vTol && iter_ct < 500
+            while dist > vTol
                 
-    %             if iter_ct < 400
-    %                 [TV, TG, ~, EV] = egm.solve(nl, na, terms, EV, V);
-    %             else 
-                    if iter_ct < 200
-                        sTol = 1e-4;
-                    else 
-                        sTol = 1e-6;
+                for ia = 1:na
+                    for il = 1:nl
+                        EV(il, ia) = pil(il,:)*V(:,ia);
                     end
-                    [TV, TG, EV] = compute.interpV(terms, V, EV, sTol);
-    %             end
-        
-                vdist = compute.dist(TV,V,2);
-                gdist = compute.dist(TG,G,2);
-                dist = max(vdist,gdist);
-        
-                if mod(iter_ct, 50) == 0
-                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
-                        "\n\t\t||TG - G|| = %4.6f", iter_ct, vdist, gdist);
                 end
-                iter_ct = iter_ct+1;
-    
-                V = TV;
-                G = TG;
-            end
-           
+                % now converging on the value function and decision rule
+                % for every capital-regime combo (EGM bc this is 50
+                % convergences)
+
+                [TV, TG]= egm.solve(terms, EV, V);
+
+                % check distance
+                dist = compute.dist(V, TV, 2);
+                kdist = compute.dist(G, TG, 2);
+            
+                if mod(iter_ct, 250) == 0
+                    fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+                        "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+% %                     fprintf("\nInitial Values:");
+% %                     fprintf("\nMin Kgrid: %2.4f, Max Kgrid: %2.4f", min(Kgrid), max(Kgrid));
+% %                     fprintf("\nInitial Capital Forecasts: Kp = %2.4f, Kl = %2.4f", Kp, Kl);
+% %                     fprintf("\nInitial Policy Function: Min Gp = %2.4f, Max Gp = %2.4f", ...
+% %                         min(TGP(:)), max(TGP(:)));
+% %                      fprintf("\nInitial Policy Function: Min Gl = %2.4f, Max Gl = %2.4f", ...
+% %                         min(TGL(:)), max(TGL(:)));
+% %                    fprintf("\nInitial Value Function: Min VP = %2.4f, Max VP = %2.4f", ...
+% %                        min(TVP(:)), max(TVP(:)));
+% %                    fprintf("\nInitial Value Function: Min VL = %2.4f, Max VL = %2.4f", ...
+% %                        min(TVL(:)), max(TVL(:)));
+                end
+            
+                iter_ct = iter_ct + 1;
+            
+                G = 0.4 * TG + 0.6 * G;
+                V = 0.4 * TV + 0.6 * V;
+
+            end  
+            fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
+                "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
             Varray{i,j}= V;
             Garray{i,j} = G;
             EVarray{i,j} = EV; 
@@ -258,7 +270,7 @@ for i = 1:neta
         parray{i,j} = sum(sum(p));
         fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
 
-        filename = strcat("results_rho90sig2_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
+        filename = strcat("results_rho90sig3_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
         save(filename)
 
     end

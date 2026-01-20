@@ -5,7 +5,7 @@
 % 
 % this code aims to implement krussel smith by several aggregate states:
 % capital depreciation (delta), regime (R), aggregate capital (K).
-% algorithm detailed in paper, etc. I keep R exogenous here. 
+% algorithm detailed in paper, etc. 
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -31,7 +31,7 @@ al = 0; ah = 200;
 
 mu = 0;
 rho = .9;
-sig_l = 0.2;
+sig_l = 0.5327;
 range = 2.575;
 
 % need to back out sigma^2_e given sigma^2_l
@@ -56,7 +56,7 @@ amu = linspace(agrid(1), agrid(na), nmu);
 verbose = true;
 
 % set size of aggregate moment grid
-Kgrid = linspace(7, 15, nk); % TODO: COVER STEADY STATES OF DICTATORS
+Kgrid = linspace(7, 45, nk);
 
 % definitions for the probability of changing regime
 probscale1 = 10;
@@ -65,7 +65,7 @@ probscale2 = 10;
 phis = [probscale1 probscale2];
 
 % finally set policies
-taul = 0.0; taup = 0.0; etal = 0.50; etap = 0;
+taul = 0.086; taup = 0.181; etal = .5; etap = 0;
 
 taugrid = [taup taul]; etagrid = [etap etal];
 
@@ -85,9 +85,8 @@ lambda_ratio = Eeps_sum ./ Eeps_pow;
 Kfore = [.1 .99; ...
           .08 .99];
 
-% not used, but don't want to fix it right now
-Rfore = [.1 .99; ...
-          .08 .99];
+Rfore = [2.2 8; ...
+          -2.2 8];% trying a different form 
 %% prep VFI
 
 terms = struct('alpha', alpha, ...
@@ -120,9 +119,10 @@ forearray = cell(50,1);
 newfore = Kfore;
 forearray{1} = Kfore;
 array_ind = 1;
+b1 = Kfore(1,:); b2 = Kfore(2,:);
 
 foredist = 10;
-rsqdist = .01;
+kforedist = 10;
 modelfun = @(b, x)(1+exp(b(1)+b(2)*x))^-1;
 beta0 = [.5 5];
 %% begin iteration
@@ -136,7 +136,7 @@ Garray = cell(1);
 Kforearray = cell(1);
 Rforearray = cell(1);
 
-while foredist > 1e-3 % rsqdist <= .999
+while foredist > vTol
 
     Rforearray{iter_ct} = Rfore;
     Kforearray{iter_ct} = Kfore;
@@ -146,51 +146,105 @@ while foredist > 1e-3 % rsqdist <= .999
     else
         vTol = 1e-6;
     end
-    fprintf("\nGetting Regression Data\n")
-    [Kprdat Rdata Prdata V G EV] = ks.getExoRegData(T, terms, vTol, verbose);
 
-%       Debugging stuff: getting my eyes on the output
+    fprintf("\n ===== Generating K forecast Rule ===== \n")
+    while kforedist > vTol
+
+        fprintf("\nGetting Regression Data\n")
+        [Kprdat Rdata Prdata distr_array V G EV] = ...
+            ks.getRegData(T, terms, vTol, verbose);
+
+        Varray{iter_ct} = V;
+        EVarray{iter_ct} = EV;
+        Garray{iter_ct} = G;
+        
+        K1 = Kprdat(Rdata == 1);
+        K2 = Kprdat(Rdata == 2);
+        Pr1 = Prdata(Rdata == 1);
+        Pr2 = Prdata(Rdata == 2);
+        
+        K_next = log(Kprdat(2:end));
+        K_curr = log(Kprdat(1:end-1));
+        R_curr = Rdata(1:end-1);
+        
+        X = [ones(size(K_curr)), K_curr];
+        
+        % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
+        if sum(R_curr == 1) > 0
+            kmdl1 = fitlm(K_curr(R_curr==1,:), K_next(R_curr==1));
+            b1 = kmdl1.Coefficients.Estimate;
+        end
+        
+        if sum(R_curr == 2) > 10
+            kmdl2 = fitlm(K_curr(R_curr==2), K_next(R_curr==2));
+            b2 = kmdl1.Coefficients.Estimate;
+        end
+        Kfore_new = [b1'; b2'];
+
+        % adjusting forecast slowly
+        Kfore = 0.5*Kfore + 0.5*Kfore_new;
+        
+        fprintf("\nCapital: R2 for pop = %0.6f\nR2 for lib = %0.6f", ...
+            kmdl1.Rsquared.Adjusted, ...
+            kmdl2.Rsquared.Adjusted)
+
+        kforedist = norm(Kfore_new-Kfore, 'inf');
+        fprintf("\nForedist = %0.6f\n\n", kforedist)
+
+    end
+
+    Kpr = ks.forecastK(Kfore, Kgrid); % nk x r
+    [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
+
+    Rt = zeros(T,1);
+    pr_logit = Rt;
+    Rt(1) = Rdata(1);
+    for t = 2:T
+        Kt = Kprdat(t-1);
+        R_t = Rt(t-1);
+        [ix we] = compute.weight(Kgrid, Kt);
+
+        g_today = distr_array{t};
+        acond = compute.condense(g_today, amu, agrid);
+    
+        % weighting over whichever Kpr state
+        Votes = we*Votes_EV(ix,R_t, :, :) + ...
+            (1-we)*Votes_EV(ix+1,R_t, :, :);
+        Votes = squeeze(Votes);
+    
+        pr = sum(sum(Votes.*acond));
+        % now feed it through logit
+        pr_logit(t) = 1./(1+exp(-1*(pr-.5)));
+        Rt(t) = 2 - (pr_logit(t)>0.5);
+    end
 %     [w1 kagg1] = HH.getDist(squeeze(G(1,1,:,:)), amu, agrid, pil, verbose);
 %     [w2 kagg2] = HH.getDist(squeeze(G(25,1,:,:)), amu, agrid, pil, verbose);
 % 
 %     [wl kaggl] = HH.getDist(squeeze(G(1,2,:,:)), amu, agrid, pil, verbose);
 %     [wp kaggp] = HH.getDist(squeeze(G(1,1,:,:)), amu, agrid, pil, verbose);
 
-    Varray{iter_ct} = V;
-    EVarray{iter_ct} = EV;
-    Garray{iter_ct} = G;
 
-    K1 = Kprdat(Rdata == 1);
-    K2 = Kprdat(Rdata == 2);
+    % Regime law: Pr(R_{t+1}=1 | R_t, K_t) = logit(d(R_t)+e(R_t) log K_t)
+    % Do two logits conditioned on current regime:
+    mdl1 = fitglm(K_curr(Rt(1:999)==1), pr_logit(Rt(1:999)==1), ...
+                  'Distribution','binomial','Link','logit','Intercept',true);
+    mdl2 = fitglm(K_curr(Rt(1:999)==2), pr_logit(Rt(1:999)==2), ...
+                  'Distribution','binomial','Link','logit','Intercept',true);
+    Rfore_new = [mdl1.Coefficients.Estimate'; mdl2.Coefficients.Estimate'];  % [d1 e1; d2 e2]
     
-    lags = 1;
-    K1_Pr = lagmatrix(K1, -1);
-    K2_Pr = lagmatrix(K2, -1);
 
-    % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
-    if sum(Rdata == 1) > 0
-        kmdl1 = fitlm(log(K1), log(K1_Pr));
-        b1 = kmdl1.Coefficients.Estimate;
-    end
-    if sum(Rdata == 2) > 0
-        kmdl2 = fitlm(log(K2), log(K2_Pr));
-        b2 = kmdl2.Coefficients.Estimate;
-    end
-    Kfore_new = [b1'; b2'];
-    disp(kmdl1)
-    disp(kmdl2)
-
-    % Damping (crucial for KS stability)
-    Kfore = 0.5*Kfore + 0.5*Kfore_new;
+    % Damping
+    Rfore = 0.5*Rfore + 0.5*Rfore_new;
     
     % Forecaster distance
-    foredist = norm(Kfore_new-Kfore, 'inf');
+    foredist = max( [norm(Kfore_new-Kfore, 'inf'), norm(Rfore_new-Rfore, 'inf')] );
 
     fprintf("\nCapital: R2 for pop = %0.6f\nR2 for lib = %0.6f", ...
         kmdl1.Rsquared.Adjusted, ...
         kmdl2.Rsquared.Adjusted)
+    fprintf("\nRegime: R-sq for pop = %0.6f\nR2 for lib = %0.6f", mdl1.Rsquared.ordinary, ...
+        mdl2.Rsquared.ordinary)
     fprintf("\nForedist = %0.6f\n\n", foredist)
-    rsqdist = max(kmdl1.Rsquared.Adjusted, kmdl2.Rsquared.Adjusted);
 %     % only once we start getting to a place where beliefs show up, I guess?
 %     if ~(isempty(K1) || isempty(K2))
 %         break
@@ -205,7 +259,8 @@ while foredist > 1e-3 % rsqdist <= .999
 %         disp(Kgrid);
 %     end
 
+    kforedist = 10;
     iter_ct = iter_ct + 1;
 end
 
-save ../d/ks_rmseed_in_pr_exo_logit_R_tau000000_eta5000
+save ../d/ks_rmseed_in_pr

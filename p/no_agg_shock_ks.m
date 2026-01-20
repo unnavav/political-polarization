@@ -119,8 +119,10 @@ forearray = cell(50,1);
 newfore = Kfore;
 forearray{1} = Kfore;
 array_ind = 1;
+b1 = Kfore(1,:); b2 = Kfore(2,:);
 
 foredist = 10;
+kforedist = 10;
 modelfun = @(b, x)(1+exp(b(1)+b(2)*x))^-1;
 beta0 = [.5 5];
 %% begin iteration
@@ -144,52 +146,94 @@ while foredist > vTol
     else
         vTol = 1e-6;
     end
-    fprintf("\nGetting Regression Data\n")
-    [Kprdat Rdata Prdata V G EV] = ks.getRegData(Rt, terms, vTol, verbose);
 
+    fprintf("\n ===== Generating K forecast Rule ===== \n")
+    while kforedist > vTol
+
+        fprintf("\nGetting Regression Data\n")
+        [Kprdat Rdata Prdata distr_array V G EV] = ...
+            ks.getRegData(T, terms, vTol, verbose);
+
+        Varray{iter_ct} = V;
+        EVarray{iter_ct} = EV;
+        Garray{iter_ct} = G;
+        
+        K1 = Kprdat(Rdata == 1);
+        K2 = Kprdat(Rdata == 2);
+        Pr1 = Prdata(Rdata == 1);
+        Pr2 = Prdata(Rdata == 2);
+        
+        K_next = log(Kprdat(2:end));
+        K_curr = log(Kprdat(1:end-1));
+        R_curr = Rdata(1:end-1);
+        
+        X = [ones(size(K_curr)), K_curr];
+        
+        % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
+        if sum(R_curr == 1) > 0
+            kmdl1 = fitlm(K_curr(R_curr==1,:), K_next(R_curr==1));
+            b1 = kmdl1.Coefficients.Estimate;
+        end
+        
+        if sum(R_curr == 2) > 10
+            kmdl2 = fitlm(K_curr(R_curr==2), K_next(R_curr==2));
+            b2 = kmdl1.Coefficients.Estimate;
+        end
+        Kfore_new = [b1'; b2'];
+
+        % adjusting forecast slowly
+        Kfore = 0.5*Kfore + 0.5*Kfore_new;
+        
+        fprintf("\nCapital: R2 for pop = %0.6f\nR2 for lib = %0.6f", ...
+            kmdl1.Rsquared.Adjusted, ...
+            kmdl2.Rsquared.Adjusted)
+
+        kforedist = norm(Kfore_new-Kfore, 'inf');
+        fprintf("\nForedist = %0.6f\n\n", kforedist)
+
+    end
+
+    Kpr = ks.forecastK(Kfore, Kgrid); % nk x r
+    [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
+
+    Rt = zeros(T,1);
+    pr_logit = Rt;
+    Rt(1) = Rdata(1);
+    for t = 2:T
+        Kt = Kprdata(t-1);
+        R_t = Rt(t-1);
+        [ix we] = compute.weight(Kgrid, Kt);
+
+        g_today = distr_array{t};
+        acond = compute.condense(g_today, amu, agrid);
+    
+        % weighting over whichever Kpr state
+        Votes = we*Votes_EV(ix,R_t, :, :) + ...
+            (1-we)*Votes_EV(ix+1,R_t, :, :);
+        Votes = squeeze(Votes);
+    
+        pr = sum(sum(Votes.*acond));
+        % now feed it through logit
+        pr_logit(t) = 1./(1+exp(-1*(pr-.5)));
+        Rt(t) = 2 - (pr_logit(t)>0.5);
+    end
 %     [w1 kagg1] = HH.getDist(squeeze(G(1,1,:,:)), amu, agrid, pil, verbose);
 %     [w2 kagg2] = HH.getDist(squeeze(G(25,1,:,:)), amu, agrid, pil, verbose);
 % 
 %     [wl kaggl] = HH.getDist(squeeze(G(1,2,:,:)), amu, agrid, pil, verbose);
 %     [wp kaggp] = HH.getDist(squeeze(G(1,1,:,:)), amu, agrid, pil, verbose);
 
-    Varray{iter_ct} = V;
-    EVarray{iter_ct} = EV;
-    Garray{iter_ct} = G;
-
-    K1 = Kprdat(Rdata == 1);
-    K2 = Kprdat(Rdata == 2);
-    Pr1 = Prdata(Rdata == 1);
-    Pr2 = Prdata(Rdata == 2);
-    
-    K_next = log(Kprdat(2:end));
-    K_curr = log(Kprdat(1:end-1));
-    R_curr = Rdata(1:end-1);
-
-    X = [ones(size(K_curr)), K_curr];
-
-    % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
-    if sum(R_curr == 1) > 0
-        kmdl1 = fitlm(X(R_curr==1,:), K_next(R_curr==1));
-        b1 = kmdl1.Coefficients.Estimate(2:3);
-    end
-    if sum(R_curr == 2) > 0
-        kmdl2 = fitlm(X(R_curr==2,:), K_next(R_curr==2));
-        b2 = kmdl1.Coefficients.Estimate(2:3);
-    end
-    Kfore_new = [b1'; b2'];
 
     % Regime law: Pr(R_{t+1}=1 | R_t, K_t) = logit(d(R_t)+e(R_t) log K_t)
     % Do two logits conditioned on current regime:
-    mdl1 = fitglm(K_curr(R_curr==1), Prdata(R_curr==1), ...
+    mdl1 = fitglm(K_curr(Rt(1:999)==1), pr_logit(Rt(1:999)==1), ...
                   'Distribution','binomial','Link','logit','Intercept',true);
-    mdl2 = fitglm(K_curr(R_curr==2), Prdata(R_curr==2), ...
+    mdl2 = fitglm(K_curr(Rt(1:999)==2), pr_logit(Rt(1:999)==2), ...
                   'Distribution','binomial','Link','logit','Intercept',true);
     Rfore_new = [mdl1.Coefficients.Estimate'; mdl2.Coefficients.Estimate'];  % [d1 e1; d2 e2]
     
 
-    % Damping (crucial for KS stability)
-    Kfore = 0.5*Kfore + 0.5*Kfore_new;
+    % Damping
     Rfore = 0.5*Rfore + 0.5*Rfore_new;
     
     % Forecaster distance

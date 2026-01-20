@@ -1,9 +1,8 @@
 classdef ks
     methods(Static)
 
-        function [Kprdata, Rdata, Prdata, V, G, EV] = getRegData(Rt, terms, vTol, verbose)
+        function [Kprdata, Rdata, Prdata, distr_array, V, G, EV] = getRegData(T, terms, vTol, verbose)
 
-            T = length(Rt);
             pil = terms.pil;
             agrid = terms.agrid;
             lgrid = terms.lgrid;
@@ -29,49 +28,10 @@ classdef ks
             fprintf("Solving HH problem...\n")
             [V, G, EV] = ks.solve(terms, vTol, verbose);
 
-            % some diagnostics that I'm just keeping around
-%             for im = 1:nm
-%                 for ir = 1:nr
-%                     if ir == 1
-%                         reg = "pop";
-%                     else
-%                         reg = "lib";
-%                     end
-%                     % 1) How tight is the Euler incentive here?
-%                     r_here = rgrid(im, ir);
-%                     fprintf('beta*(1+r) at (im=%d, %s): %.4f\n', im, reg, beta*(1+r_here));
-%                     
-%                     % 2) Are policies slamming the top of the asset grid?
-%                     g_node = squeeze(G(im, ir, :, :));   % nl x na
-%                     share_top = mean(g_node(:) >= agrid(end) - 1e-10);
-%                     share_bot = mean(g_node(:) <= agrid(1)  + 1e-10);
-%                     fprintf('Policy at top/bottom grid (%s): %.1f%% / %.1f%%\n', reg, 100*share_top, 100*share_bot);
-%                     
-%                     % 3) What is the nodewise implied K' vs K (is it way off-grid)?
-%                     nmu = 10*length(agrid);
-%                     amu = linspace(agrid(1), agrid(end), nmu);
-%                     [~, Kp_here] = HH.getDist(g_node, amu, agrid, pil, false);
-%                     fprintf('At K=%g (grid), implied K''(lib)=%g\n', Kgrid(im), Kp_here);
-% 
-%                     share_above = mean(mean(g_node(:,125:end)>agrid(125:end)));
-%                     fprintf('Policy at exceeds grid (%s): %.1f%% \n', reg, 100*share_above);
-%                 end
-%             end
-% 
-%             Kp_implied_lib = zeros(length(Kgrid),1);
-%             for im = 1:length(Kgrid)
-%               g_node = squeeze(G(im, 2, :, :));              % regime 2 = liberalist
-%               [~, Kp_implied_lib(im)] = HH.getDist(g_node, amu, agrid, pil, false);
-%             end
-%             
-%             figure;
-%             plot(Kgrid, Kp_implied_lib, '-o','LineWidth',1.5); hold on;
-%             plot(Kgrid, Kgrid, '--k'); xlabel('K (grid)'); ylabel('K'' implied (lib)');
-%             title('Nodewise law of motion (liberalist)');
-
+            % Votes -> when 
+            [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
 
             % get inital conditions for the regression data
-
             distr_array = cell(T,1);
             g0 = ones(nl, nmu)/(nmu*nl);
             g0_cond = compute.condense(g0, amu, agrid);
@@ -96,8 +56,19 @@ classdef ks
                 g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
 
                 distr_array{t} = g_today;
-                Kpr = sum(compute.condense(g_today, amu, agrid),1)*agrid';
+                acond = compute.condense(g_today, amu, agrid);
+                Kpr = sum(acond,1)*agrid';
                 Kprdata(t) = Kpr;
+
+                % weighting over whichever Kpr state
+                Votes = we*Votes_EV(ix,Rt, :, :) + ...
+                    (1-we)*Votes_EV(ix+1,Rt, :, :);
+                Votes = squeeze(Votes);
+
+                pr = sum(Votes,1)*agrid';
+                % now feed it through logit
+                pr_logit = 1./(1+exp(-1*(pr-.5)));
+                Rdata(t) = 2 - (pr_logit>0.5);
 
                 if mod(t,100) == 0
                     fprintf("\n\t t = %i", t)
@@ -105,6 +76,74 @@ classdef ks
             end
 
         end
+
+
+        function [Kprdata, Rdata, Prdata, distr_array, V, G, EV] = getExoRegData(T, terms, vTol, verbose)
+
+            pil = terms.pil;
+            agrid = terms.agrid;
+            lgrid = terms.lgrid;
+            Kgrid = terms.Kgrid;
+            phis = terms.phis;
+            na = length(agrid); nl = length(lgrid); nm = length(Kgrid); nr = 2;
+
+            Kprdata = zeros(T,1);
+            Rdata = zeros(T,1);
+            Prdata = zeros(T,1);
+%             gamma = terms.gamma;
+
+            % forecasting K, R. outputs nkx1 and nkxr forecasts
+            Kpr = ks.forecastK(terms.Kfore, Kgrid); % nk x r
+            Rpr = [.9*ones(nm,1) .1*ones(nm,1)]; % nk x r
+            terms.Kpr = Kpr;
+            terms.Rpr = Rpr;
+
+            nmu = na*10;
+            amu = linspace(agrid(1), agrid(na), nmu);
+    
+            % solve for the household problem
+            fprintf("Solving HH problem...\n")
+            [V, G, EV] = ks.solve(terms, vTol, verbose);
+
+            % Votes -> when 
+            [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
+
+            % get inital conditions for the regression data
+            distr_array = cell(T,1);
+            g0 = ones(nl, nmu)/(nmu*nl);
+            g0_cond = compute.condense(g0, amu, agrid);
+            K0 = sum(g0_cond,1)*agrid';
+            rng(terms.rnseed);
+            prdraw = rand(T,1);
+
+            % this is for a random draw
+            pr_logit = 1./(1+exp(-100*(prdraw-.5)));
+            Rdata = 2 - (pr_logit>0.5);
+            Kprdata(1) = K0; distr_array{1} = g0;
+
+            fprintf("Generating regression data...\n")
+            for t = 2:1:T
+                Kt = Kprdata(t-1);
+                Rt = Rdata(t-1);
+                g_prev = distr_array{t-1};
+                
+                [ix we] = compute.weight(Kgrid, Kt);
+                g_t = we*G(ix, Rt, :,:) + (1-we)*G(ix+1, Rt, :, :);
+                g_t = squeeze(g_t);
+                g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
+
+                distr_array{t} = g_today;
+                acond = compute.condense(g_today, amu, agrid);
+                Kpr = sum(acond,1)*agrid';
+                Kprdata(t) = Kpr;
+                
+                if mod(t,100) == 0
+                    fprintf("\n\t t = %i", t)
+                end
+            end
+
+        end
+
 
         function [V, G, V0] = solve(terms, vTol, verbose)
 
@@ -273,49 +312,6 @@ classdef ks
             EV = EV3;
         end
 
-        function [EV1, EV2, Votes_EV] = getVotingExpectations(V, pil, Kpr, Kgrid)
-            [nm, nr, ne, na] = size(V);
-            EV1 = zeros(size(V));
-            EV2 = EV1;
-
-            [ix, we] = ks.weight(Kgrid,Kpr);
-
-            % step 1: updating EV(a,e)
-            for im = 1:nm
-                for ir = 1:nr
-                    for ia = 1:na
-                        for ie = 1:ne
-                            EV1(im, ir, ie, ia) = pil(ie,:)*squeeze(V(im, ir, :, ia));
-                        end
-                    end
-                end
-            end
-            
-
-            EV_R1 = zeros(size(V));  % value if NEXT regime is forced to 1
-            EV_R2 = zeros(size(V));  % value if NEXT regime is forced to 2
-        
-            for im = 1:nm
-                for ir = 1:nr
-                    ix_m = ix(im, ir); 
-                    we_m = we(im, ir);
-        
-                    % Interpolate from the ε-averaged EV *holding R' fixed*
-                    EV_R1(im, ir, :, :) = ...
-                        we_m    * EV1(ix_m,   1, :, :) + ...
-                        (1-we_m)* EV1(ix_m+1, 1, :, :);
-        
-                    EV_R2(im, ir, :, :) = ...
-                        we_m    * EV1(ix_m,   2, :, :) + ...
-                        (1-we_m)* EV1(ix_m+1, 2, :, :);
-                end
-            end
-        
-            % Step 3: voting rule (elementwise comparison over (ε,a))
-            Votes_EV = (EV_R1 >= EV_R2);    % nm x nr x nl x na
-
-        end
-
         function kpr = forecastK(fore,k)            
 
             % preds = nk x 2
@@ -327,6 +323,8 @@ classdef ks
             preds = [preds1' preds2'];
             kpr = exp(preds);
         end
+
+
 
         function pr = forecastR(fore,k)
 
