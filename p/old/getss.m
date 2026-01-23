@@ -27,11 +27,11 @@ alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 neta = 20;
 ntau = 20;
 nl = 7;
-na = 250;
+na = 100;
 nmu = na*10;
 np = 2;
 
-al = 0+phi; ah = 100+phi;
+al = 0+phi; ah = 50+phi;
 
 % initial r guess: 
 r = 0.04;

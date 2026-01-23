@@ -7,7 +7,6 @@ classdef ks
             agrid = terms.agrid;
             lgrid = terms.lgrid;
             Kgrid = terms.Kgrid;
-            phis = terms.phis;
             na = length(agrid); nl = length(lgrid); nm = length(Kgrid);
 
             Kprdata = zeros(T,1);
@@ -17,9 +16,7 @@ classdef ks
 
             % forecasting K, R. outputs nkx1 and nkxr forecasts
             Kpr = ks.forecastK(terms.Kfore, Kgrid); % nk x r
-            Rpr = ks.forecastR(terms.Rfore, Kgrid); % nk x r
             terms.Kpr = Kpr;
-            terms.Rpr = Rpr;
 
             nmu = na*10;
             amu = linspace(agrid(1), agrid(na), nmu);
@@ -33,24 +30,24 @@ classdef ks
 
             % get inital conditions for the regression data
             distr_array = cell(T,1);
-            g0 = ones(nl, nmu)/(nmu*nl);
+            g0 = terms.starter_distr;
             g0_cond = compute.condense(g0, amu, agrid);
             K0 = sum(g0_cond,1)*agrid';
-            rng(terms.rnseed);
-            prdraw = rand(T,1);
-
-            % this is for a random draw
-            pr_logit = 1./(1+exp(-1*(prdraw-.5)));
-            Rdata = 2 - (pr_logit>0.5);
             Kprdata(1) = K0; distr_array{1} = g0;
+
+            % matching the forecast with the actual transitions between
+            % regimes randomly generated
+            Rdata = predict.sim(T, 2, terms.rnseed, terms.Rfore);
+%             Rdata = ones(1000,1);
+%             Rdata(501:end) = 2;
 
             fprintf("Generating regression data...\n")
             for t = 2:1:T
                 Kt = Kprdata(t-1);
-                Rt = Rdata(t-1);
+                Rt = Rdata(t);
                 g_prev = distr_array{t-1};
                 
-                [ix we] = compute.weight(Kgrid, Kt);
+                [ix, we] = compute.weight(Kgrid, Kt);
                 g_t = we*G(ix, Rt, :,:) + (1-we)*G(ix+1, Rt, :, :);
                 g_t = squeeze(g_t);
                 g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
@@ -60,88 +57,10 @@ classdef ks
                 Kpr = sum(acond,1)*agrid';
                 Kprdata(t) = Kpr;
 
-                % weighting over whichever Kpr state
-                Votes = we*Votes_EV(ix,Rt, :, :) + ...
-                    (1-we)*Votes_EV(ix+1,Rt, :, :);
-                Votes = squeeze(Votes);
-
-                pr = sum(Votes,1)*agrid';
-                % now feed it through logit
-                pr_logit = 1./(1+exp(-1*(pr-.5)));
-                Rdata(t) = 2 - (pr_logit>0.5);
-
                 if mod(t,100) == 0
                     fprintf("\n\t t = %i", t)
                 end
             end
-
-        end
-
-
-        function [Kprdata, Rdata, Prdata, distr_array, V, G, EV] = getExoRegData(T, terms, vTol, verbose)
-
-            pil = terms.pil;
-            agrid = terms.agrid;
-            lgrid = terms.lgrid;
-            Kgrid = terms.Kgrid;
-            phis = terms.phis;
-            na = length(agrid); nl = length(lgrid); nm = length(Kgrid); nr = 2;
-
-            Kprdata = zeros(T,1);
-            Rdata = zeros(T,1);
-            Prdata = zeros(T,1);
-%             gamma = terms.gamma;
-
-            % forecasting K, R. outputs nkx1 and nkxr forecasts
-            Kpr = ks.forecastK(terms.Kfore, Kgrid); % nk x r
-            Rpr = [.9*ones(nm,1) .1*ones(nm,1)]; % nk x r
-            terms.Kpr = Kpr;
-            terms.Rpr = Rpr;
-
-            nmu = na*10;
-            amu = linspace(agrid(1), agrid(na), nmu);
-    
-            % solve for the household problem
-            fprintf("Solving HH problem...\n")
-            [V, G, EV] = ks.solve(terms, vTol, verbose);
-
-            % Votes -> when 
-            [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
-
-            % get inital conditions for the regression data
-            distr_array = cell(T,1);
-            g0 = ones(nl, nmu)/(nmu*nl);
-            g0_cond = compute.condense(g0, amu, agrid);
-            K0 = sum(g0_cond,1)*agrid';
-            rng(terms.rnseed);
-            prdraw = rand(T,1);
-
-            % this is for a random draw
-            pr_logit = 1./(1+exp(-100*(prdraw-.5)));
-            Rdata = 2 - (pr_logit>0.5);
-            Kprdata(1) = K0; distr_array{1} = g0;
-
-            fprintf("Generating regression data...\n")
-            for t = 2:1:T
-                Kt = Kprdata(t-1);
-                Rt = Rdata(t-1);
-                g_prev = distr_array{t-1};
-                
-                [ix we] = compute.weight(Kgrid, Kt);
-                g_t = we*G(ix, Rt, :,:) + (1-we)*G(ix+1, Rt, :, :);
-                g_t = squeeze(g_t);
-                g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
-
-                distr_array{t} = g_today;
-                acond = compute.condense(g_today, amu, agrid);
-                Kpr = sum(acond,1)*agrid';
-                Kprdata(t) = Kpr;
-                
-                if mod(t,100) == 0
-                    fprintf("\n\t t = %i", t)
-                end
-            end
-
         end
 
 
@@ -205,11 +124,10 @@ classdef ks
 
 
             Kpr = terms.Kpr;
-            Rpr = terms.Rpr;
 
             while dist > vTol
                 
-                EV = ks.getExpectation(V, pil, Kpr, Rpr, Kgrid);
+                EV = ks.getExpectation(V, pil, Kpr, Rfore, Kgrid);
 
                 % now converging on the value function and decision rule
                 % for every capital-regime combo (EGM bc this is 50
@@ -271,7 +189,7 @@ classdef ks
         % regimes based on the probability of transition given current
         % regime & capital. Then finally interpolate across the expected
         % moment of future capital. 
-        function EV = getExpectation(V, pil, Kpr, Rpr, Kgrid)
+        function EV = getExpectation(V, pil, Kpr, Rfore, Kgrid)
 
             [nm, nr, ne, na] = size(V);
             EV1 = zeros(size(V));
@@ -295,8 +213,8 @@ classdef ks
             % step 2: weighting based on transition probability
             for im = 1:nm
                 for ir = 1:nr
-                    pr_R1 = Rpr(im, ir);
-                    EV2(im, ir, :, :) = pr_R1*EV1(im, 1, :, :) + (1-pr_R1)*EV1(im, 2, :, :);
+                    EV2(im, ir, :, :) = Rfore(ir,1)*EV1(im, 1, :, :) + ...
+                        Rfore(ir,2)*EV1(im, 2, :, :);
                 end
             end
 
