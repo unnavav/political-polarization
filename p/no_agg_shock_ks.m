@@ -107,13 +107,12 @@ terms = struct('alpha', alpha, ...
     'rnseed', 1234567);
 
 rng("default")
-T = 10000;
+T = 1000;
 % Rt = predict.sim(T,2,"default",Rguess);
 
 verbose = true;
 forearray = cell(50,1);
 
-newfore = Kfore;
 forearray{1} = Kfore;
 array_ind = 1;
 b1 = Kfore(1,:); b2 = Kfore(2,:);
@@ -123,6 +122,8 @@ kforedist = 10;
 rforedist = 10;
 
 % setting up predicitions for Regime change
+% start from assuming capital has no effect, then start to build out
+% forecast
 mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
 beta0_1 = [2.9957; 0];
 beta0_2 = [0.0513; 0];
@@ -150,7 +151,7 @@ while foredist > vTol
         vTol = 1e-6;
     end
 
-    fprintf("\n ===== Generating K forecast Rule ===== \n")
+    fprintf("\n ===== Generating forecast rules ===== \n")
 
 
     fprintf("\nGetting Regression Data\n")
@@ -166,8 +167,8 @@ while foredist > vTol
         
     K_next = log(Kprdat(2:end));
     K_curr = log(Kprdat(1:end-1));
-    R_curr = Rdata(1:end-1);
-    R_next = Rdata(2:end);
+    R_curr = Rdata(1:end-2);
+    R_next = Rdata(2:end-1);
 
     %           updating K coefficients
     % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
@@ -188,9 +189,7 @@ while foredist > vTol
     terms.Kfore = Kfore;
 
     %              Updating R Coefficients
-    % R law = Pr(R' = 1 | R) = exp(1/(d(R) + e(R)K))
-
-
+    % R law = Pr(R' = 1 | R) = exp(1/(d(R) + e(R)lnK))
 
     % Binary indicator for next regime being 1
     Y = (R_next == 1);  
@@ -228,6 +227,27 @@ while foredist > vTol
     fprintf('K(1) = %0.4f\n', Kprdat(1));
     fprintf('K range: [%0.4f, %0.4f]\n', min(Kprdat), max(Kprdat));
 
+    figure;
+
+    % 1) Two-panel plot
+    subplot(2,1,1);
+    plot(Prdata,'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
+    yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);  % majority threshold
+    xlabel('Time');
+    ylabel('P(populism)');
+    title('Probability of Voting for Populism');
+    ylim([0 1]);
+    grid on;
+    set(gca,'FontSize',12);
+
+    subplot(2,1,2);
+    plot(Kprdat,'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
+    xlabel('Time');
+    ylabel('Aggregate Capital K');
+    title('Aggregate Capital Path');
+    grid on;
+    set(gca,'FontSize',12);
+
     fprintf('Regime 1: log K'' = %0.4f + %0.4f log K\n', b1(1), b1(2));
     fprintf('Regime 1: Pr R pr = 1 = exp((%0.4f + %0.4f log K)^-1)\n', br1(1), br1(2));
 
@@ -249,26 +269,26 @@ while foredist > vTol
     % br1, br2  % 2x1 coefficient vectors [beta0; beta1]
     % K_curr, R_curr, R_next
     
-    % Build function handle for logit
-    mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
-    
-    % Use log K if that’s what you estimated on
-    X1 = log(K_curr(R_curr == 1));
-    X2 = log(K_curr(R_curr == 2));
-    
-    p1 = mymodelfun(br1, X1);   % P(R_{t+1}=1 | R_t=1, K_t)
-    p2 = mymodelfun(br2, X2);   % P(R_{t+1}=1 | R_t=2, K_t)
-    
-    figure;
-    scatter(X1, p1, 10, 'b', 'filled'); hold on;
-    scatter(X2, p2, 10, 'r', 'filled');
-    
-    ylim([0 1]);
-    xlabel('log K_t');
-    ylabel('P(R_{t+1} = 1)');
-    legend('Current R_t = 1','Current R_t = 2','Location','best');
-    grid on;
+    % % Build function handle for logit
+    % mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
+    % 
+    % % Use log K if that’s what you estimated on
+    % X1 = log(K_curr(R_curr == 1));
+    % X2 = log(K_curr(R_curr == 2));
+    % 
+    % p1 = mymodelfun(br1, X1);   % P(R_{t+1}=1 | R_t=1, K_t)
+    % p2 = mymodelfun(br2, X2);   % P(R_{t+1}=1 | R_t=2, K_t)
+    % 
+    % figure;
+    % scatter(X1, p1, 10, 'b', 'filled'); hold on;
+    % scatter(X2, p2, 10, 'r', 'filled');
+    % 
+    % ylim([0 1]);
+    % xlabel('log K_t');
+    % ylabel('P(R_{t+1} = 1)');
+    % legend('Current R_t = 1','Current R_t = 2','Location','best');
+    % grid on;
 
 end
 
-save ../d/ks_rfore_learning_T2000.mat
+save ../d/ks_rfore_endo.mat

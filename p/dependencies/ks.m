@@ -9,10 +9,6 @@ classdef ks
             Kgrid = terms.Kgrid;
             na = length(agrid); nl = length(lgrid); nm = length(Kgrid);
 
-            Kprdata = zeros(T,1);
-            Rdata = zeros(T,1);
-            Prdata = zeros(T,1);
-%             gamma = terms.gamma;
 
             % forecasting K, R. outputs nkx1 and nkxr forecasts
             Kpr = ks.forecastK(terms.Kfore, Kgrid); % nk x r
@@ -27,21 +23,20 @@ classdef ks
             fprintf("Solving HH problem...\n")
             [V, G, EV] = ks.solve(terms, vTol, verbose);
 
-            % Votes -> when 
+            % Votes  
             [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
 
             % get inital conditions for the regression data
+            Kprdata = zeros(T,1);
             distr_array = cell(T,1);
             g0 = terms.starter_distr;
             g0_cond = compute.condense(g0, amu, agrid);
             K0 = sum(g0_cond,1)*agrid';
             Kprdata(1) = K0; distr_array{1} = g0;
 
-            % matching the forecast with the actual transitions between
-            % regimes randomly generated
-            Rdata = predict.sim(T, 2, terms.rnseed, terms.Rswitch);
-%             Rdata = ones(1000,1);
-%             Rdata(501:end) = 2;
+            % start with regime one, then check
+            Rdata = ones(T,1);
+            Prdata = Rdata;
 
             fprintf("Generating regression data...\n")
             for t = 2:1:T
@@ -58,6 +53,26 @@ classdef ks
                 acond = compute.condense(g_today, amu, agrid);
                 Kpr = sum(acond,1)*agrid';
                 Kprdata(t) = Kpr;
+
+                % now use K today, Kpr, and R today to back out max vote,
+                % along with the actual distribution over wealth. Note that
+                % this voting rule already interpolates over the future
+                % forecast, so I only need to interpolate over today's K,
+                % then force it back to binary (otherwise there's a decimal
+                % value on whether or not I'll vote for R = 1)
+
+                todays_votes = we*Votes_EV(ix, Rt, :, :) + ...
+                    (1-we)*Votes_EV(ix+1, Rt, :, :);
+                todays_votes = squeeze(todays_votes);
+                todays_votes = (todays_votes >= .5);
+
+                vote_total = sum(sum(acond.*todays_votes));
+                Prdata(t) = vote_total;
+                if (vote_total <=.5) 
+                    Rdata(t+1) = 2; 
+                else 
+                    Rdata(t+1) = 1;
+                end
 
                 if mod(t,100) == 0
                     fprintf("\n\t t = %i", t)
