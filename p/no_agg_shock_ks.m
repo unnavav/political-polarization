@@ -80,8 +80,11 @@ lambda_ratio = Eeps_sum ./ Eeps_pow;
 Kfore = [log(K_ss_pop)*0.01, 0.99;   % Small persistence, close to SS
          log(K_ss_lib)*0.01, 0.99];
 
-Rfore = [.95 0.05; ...
-    0.05 .95]; %REMEMBER TO FIX THIS WHEN YOU BEGIN ACTUAL RFORE
+Rfore = [-.5 0; ...
+    -.5 0]; %start them at some random Rfore
+
+Rswitch = [.95 .05; ...
+    .05 .95];
 %% prep VFI
 
 terms = struct('alpha', alpha, ...
@@ -94,6 +97,7 @@ terms = struct('alpha', alpha, ...
     'pil', pil, ...
     'Kfore', Kfore, ...
     'Rfore', Rfore, ...
+    'Rswitch', Rswitch, ... 
     'captax', captax, ...
     'taugrid', taugrid, ...
     'G', 0, ...
@@ -103,7 +107,7 @@ terms = struct('alpha', alpha, ...
     'rnseed', 1234567);
 
 rng("default")
-T = 1000;
+T = 10000;
 % Rt = predict.sim(T,2,"default",Rguess);
 
 verbose = true;
@@ -116,6 +120,13 @@ b1 = Kfore(1,:); b2 = Kfore(2,:);
 
 foredist = 10;
 kforedist = 10;
+rforedist = 10;
+
+% setting up predicitions for Regime change
+mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
+beta0_1 = [2.9957; 0];
+beta0_2 = [0.0513; 0];
+
 %% begin iteration
 
 % closing in on this bitch
@@ -129,6 +140,9 @@ Rforearray = cell(1);
 terms.starter_distr = g1;
 
 while foredist > vTol
+
+    Kforearray{iter_ct} = Kfore;
+    Rforearray{iter_ct} = Rfore;
 
     if foredist > 1e-1
         vTol = 1e-4;
@@ -153,7 +167,9 @@ while foredist > vTol
     K_next = log(Kprdat(2:end));
     K_curr = log(Kprdat(1:end-1));
     R_curr = Rdata(1:end-1);
-        
+    R_next = Rdata(2:end);
+
+    %           updating K coefficients
     % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
     if sum(R_curr == 1) > 10
         kmdl1 = fitlm(K_curr(R_curr==1), K_next(R_curr==1));
@@ -165,26 +181,94 @@ while foredist > vTol
         b2 = kmdl2.Coefficients.Estimate;
     end
     Kfore_new = [b1'; b2'];
-    foredist = norm(Kfore_new-Kfore, 'inf');
+    kforedist = norm(Kfore_new-Kfore, 'inf');
 
-    % Update forecast
+    % Update K forecast
     Kfore = 0.8*Kfore + 0.2*Kfore_new;
     terms.Kfore = Kfore;
+
+    %              Updating R Coefficients
+    % R law = Pr(R' = 1 | R) = exp(1/(d(R) + e(R)K))
+
+
+
+    % Binary indicator for next regime being 1
+    Y = (R_next == 1);  
+    if sum(R_curr == 1) > 10
+        X1   = K_curr(R_curr == 1);
+        X1_std = (X1 - mean(X1)) / std(X1);
+        Y1   = Y(R_curr == 1);       % 0/1
+        opts = statset('Display','iter');
+        nlm1 = fitnlm(X1_std, Y1, mymodelfun, beta0_1);
+        br1  = nlm1.Coefficients.Estimate;   % [beta0; beta1]
+    end
+
+%     scatter(X1 , Y1)
+%     hold on
+%     fplot(@(kk) mymodelfun(nlm1.Coefficients.Estimate, kk), [min(X1), max(X1)])
+%     hold off
+
+    if sum(R_curr == 2) > 10
+        X2   = K_curr(R_curr == 2);
+        X2_std = (X2 - mean(X2)) / std(X2);
+        Y2   = Y(R_curr == 2);
+        nlm2 = fitnlm(X2_std, Y2, mymodelfun, beta0_2);
+        br2  = nlm2.Coefficients.Estimate;
+    end
+    Rfore_new = [br1'; br2'];
+    % Update K forecast
+    testK = linspace(min(log(K_curr)), max(log(K_curr)), nk);
+    p_old = ks.forecastR(Rfore,testK);
+    p_new = ks.forecastR(Rfore_new,testK);
+    rforedist = norm(p_new - p_old, 'inf');
+
+    Rfore = 0.8*Rfore + 0.2*Rfore_new;
+    terms.Rfore = Rfore;
 
     fprintf('K(1) = %0.4f\n', Kprdat(1));
     fprintf('K range: [%0.4f, %0.4f]\n', min(Kprdat), max(Kprdat));
 
     fprintf('Regime 1: log K'' = %0.4f + %0.4f log K\n', b1(1), b1(2));
-    fprintf('Regime 2: log K'' = %0.4f + %0.4f log K\n', b2(1), b2(2));
+    fprintf('Regime 1: Pr R pr = 1 = exp((%0.4f + %0.4f log K)^-1)\n', br1(1), br1(2));
 
-    Kforearray{iter_ct} = Kfore;
+    fprintf('Regime 2: log K'' = %0.4f + %0.4f log K\n', b2(1), b2(2));
+    fprintf('Regime 2: Pr R pr = 1 = exp((%0.4f + %0.4f log K)^-1)\n', br2(1), br2(2));
 
     fprintf("\nCapital: R2 for pop = %0.6f\nR2 for lib = %0.6f", ...
         kmdl1.Rsquared.Adjusted, ...
         kmdl2.Rsquared.Adjusted)
+
+    fprintf("\nRegime Guessing Distance: %1.4f", ...
+        rforedist)
+    foredist = max(rforedist, kforedist);
     fprintf("\nForedist = %0.6f\n\n", foredist)
 
     iter_ct = iter_ct + 1;
+
+    % After running fitnlm and having:
+    % br1, br2  % 2x1 coefficient vectors [beta0; beta1]
+    % K_curr, R_curr, R_next
+    
+    % Build function handle for logit
+    mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
+    
+    % Use log K if that’s what you estimated on
+    X1 = log(K_curr(R_curr == 1));
+    X2 = log(K_curr(R_curr == 2));
+    
+    p1 = mymodelfun(br1, X1);   % P(R_{t+1}=1 | R_t=1, K_t)
+    p2 = mymodelfun(br2, X2);   % P(R_{t+1}=1 | R_t=2, K_t)
+    
+    figure;
+    scatter(X1, p1, 10, 'b', 'filled'); hold on;
+    scatter(X2, p2, 10, 'r', 'filled');
+    
+    ylim([0 1]);
+    xlabel('log K_t');
+    ylabel('P(R_{t+1} = 1)');
+    legend('Current R_t = 1','Current R_t = 2','Location','best');
+    grid on;
+
 end
 
-save ../d/ks_rmseed_in_pr.mat
+save ../d/ks_rfore_learning_T2000.mat

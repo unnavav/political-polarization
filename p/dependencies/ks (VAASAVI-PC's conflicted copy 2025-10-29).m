@@ -7,6 +7,7 @@ classdef ks
             agrid = terms.agrid;
             lgrid = terms.lgrid;
             Kgrid = terms.Kgrid;
+            phis = terms.phis;
             na = length(agrid); nl = length(lgrid); nm = length(Kgrid);
 
             Kprdata = zeros(T,1);
@@ -32,24 +33,24 @@ classdef ks
 
             % get inital conditions for the regression data
             distr_array = cell(T,1);
-            g0 = terms.starter_distr;
+            g0 = ones(nl, nmu)/(nmu*nl);
             g0_cond = compute.condense(g0, amu, agrid);
             K0 = sum(g0_cond,1)*agrid';
-            Kprdata(1) = K0; distr_array{1} = g0;
+            rng(terms.rnseed);
+            prdraw = rand(T,1);
 
-            % matching the forecast with the actual transitions between
-            % regimes randomly generated
-            Rdata = predict.sim(T, 2, terms.rnseed, terms.Rswitch);
-%             Rdata = ones(1000,1);
-%             Rdata(501:end) = 2;
+            % this is for a random draw
+            pr_logit = 1./(1+exp(-1*(prdraw-.5)));
+            Rdata = 2 - (pr_logit>0.5);
+            Kprdata(1) = K0; distr_array{1} = g0;
 
             fprintf("Generating regression data...\n")
             for t = 2:1:T
                 Kt = Kprdata(t-1);
-                Rt = Rdata(t);
+                Rt = Rdata(t-1);
                 g_prev = distr_array{t-1};
                 
-                [ix, we] = compute.weight(Kgrid, Kt);
+                [ix we] = compute.weight(Kgrid, Kt);
                 g_t = we*G(ix, Rt, :,:) + (1-we)*G(ix+1, Rt, :, :);
                 g_t = squeeze(g_t);
                 g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
@@ -59,12 +60,22 @@ classdef ks
                 Kpr = sum(acond,1)*agrid';
                 Kprdata(t) = Kpr;
 
+%                 % weighting over whichever Kpr state
+%                 Votes = we*Votes_EV(ix,Rt, :, :) + ...
+%                     (1-we)*Votes_EV(ix+1,Rt, :, :);
+%                 Votes = squeeze(Votes);
+% 
+%                 pr = sum(Votes,1)*agrid';
+%                 % now feed it through logit
+%                 pr_logit = 1./(1+exp(-1*(pr-.5)));
+%                 Rdata(t) = 2 - (pr_logit>0.5);
+
                 if mod(t,100) == 0
                     fprintf("\n\t t = %i", t)
                 end
             end
-        end
 
+        end
 
         function [V, G, V0] = solve(terms, vTol, verbose)
 
@@ -136,7 +147,7 @@ classdef ks
                 % for every capital-regime combo (EGM bc this is 50
                 % convergences)
 
-                for im = 1:nm
+                parfor im = 1:nm
                     for ir = 1:nr
                         pol_terms = terms;
                         pol_terms.eta = terms.etagrid(ir);
@@ -191,7 +202,7 @@ classdef ks
         % given the transition grid. Then weight between the two possible
         % regimes based on the probability of transition given current
         % regime & capital. Then finally interpolate across the expected
-        % moments of future capital. 
+        % moment of future capital. 
         function EV = getExpectation(V, pil, Kpr, Rpr, Kgrid)
 
             [nm, nr, ne, na] = size(V);
@@ -212,11 +223,12 @@ classdef ks
                 end
             end
             
+
             % step 2: weighting based on transition probability
             for im = 1:nm
                 for ir = 1:nr
-                    EV2(im, ir, :, :) = Rpr(im,ir)*EV1(im, 1, :, :) + ...
-                        (1-Rpr(im, ir))*EV1(im, 2, :, :);
+                    pr_R1 = Rpr(im, ir);
+                    EV2(im, ir, :, :) = pr_R1*EV1(im, 1, :, :) + (1-pr_R1)*EV1(im, 2, :, :);
                 end
             end
 
@@ -252,13 +264,10 @@ classdef ks
             % there is a way to do this with matrix algebra that i cba to
             % figure out
             preds = [ones(length(k),1), log(k)'];
-            z1 = preds * fore(1,:)';            % nk x 1
-            z2 = preds * fore(2,:)';            % nk x 1
-        
-            pr1 = 1./(1 + exp(-z1));            % P(R' = 1 | R = 1, K)
-            pr2 = 1./(1 + exp(-z2));            % P(R' = 1 | R = 2, K)
-        
-            pr  = [pr1 pr2];                    % nk x 2, each entry in (0,1)
+            pr1 = (1+exp(sum(fore(1,:).* preds, 2))).^-1;    
+            pr2 = (1+exp(sum(fore(2,:).* preds, 2))).^-1;    
+            pr = [pr1 pr2];
+
         end
 
         function [ixmat, wemat] = weight(Kgrid, Kpr)
