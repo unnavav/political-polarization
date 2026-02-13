@@ -137,6 +137,7 @@ EVarray = cell(1);
 Garray = cell(1);
 Kforearray = cell(1);
 Rforearray = cell(1);
+nlms = cell(1,2);
 
 terms.starter_distr = g1;
 
@@ -220,6 +221,8 @@ while foredist > vTol
     p_old = ks.forecastR(Rfore,testK);
     p_new = ks.forecastR(Rfore_new,testK);
     rforedist = norm(p_new - p_old, 'inf');
+    nlms{iter_ct, 1} = nlm1;
+    nlms{iter_ct, 2} = nlm2;
 
     Rfore = 0.8*Rfore + 0.2*Rfore_new;
     terms.Rfore = Rfore;
@@ -227,26 +230,26 @@ while foredist > vTol
     fprintf('K(1) = %0.4f\n', Kprdat(1));
     fprintf('K range: [%0.4f, %0.4f]\n', min(Kprdat), max(Kprdat));
 
-    figure;
-
-    % 1) Two-panel plot
-    subplot(2,1,1);
-    plot(Prdata,'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
-    yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);  % majority threshold
-    xlabel('Time');
-    ylabel('P(populism)');
-    title('Probability of Voting for Populism');
-    ylim([0 1]);
-    grid on;
-    set(gca,'FontSize',12);
-
-    subplot(2,1,2);
-    plot(Kprdat,'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
-    xlabel('Time');
-    ylabel('Aggregate Capital K');
-    title('Aggregate Capital Path');
-    grid on;
-    set(gca,'FontSize',12);
+    % figure;
+    % 
+    % % 1) Two-panel plot
+    % subplot(2,1,1);
+    % plot(Prdata,'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
+    % yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);  % majority threshold
+    % xlabel('Time');
+    % ylabel('P(populism)');
+    % title('Probability of Voting for Populism');
+    % ylim([0 1]);
+    % grid on;
+    % set(gca,'FontSize',12);
+    % 
+    % subplot(2,1,2);
+    % plot(Kprdat,'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
+    % xlabel('Time');
+    % ylabel('Aggregate Capital K');
+    % title('Aggregate Capital Path');
+    % grid on;
+    % set(gca,'FontSize',12);
 
     fprintf('Regime 1: log K'' = %0.4f + %0.4f log K\n', b1(1), b1(2));
     fprintf('Regime 1: Pr R pr = 1 = exp((%0.4f + %0.4f log K)^-1)\n', br1(1), br1(2));
