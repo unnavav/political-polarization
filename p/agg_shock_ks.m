@@ -16,9 +16,9 @@ addpath(genpath(pwd));
 %% pulling in steady states of interest and relevant policies
 
 cd ../d/steadystates/
-load resultsna100ah50rho90sig3.mat
+load delta_results_rho90sig3_t0.4500_eta0.3375.mat
 
-clearvars -except Warray Karray etagrid taugrid captax
+clearvars -except Warray Karray etagrid taugrid captax dgrid pid 
 
 g1 = Warray{1,5}; g2 = Warray{3,3};
 K_ss_pop = Karray{1,5}; K_ss_lib = Karray{3,3};
@@ -38,7 +38,7 @@ vTol = 1e-6;
 alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 
 % grid sizes
-nl = 7; na = 100; nmu = na*10; nr = 2; nk = 13;
+nl = 7; na = 100; nmu = na*10; nr = 2; nk = 13; nd = length(dgrid);
 
 al = 0; ah = 50;
 % get labor distribution and aggregate values
@@ -78,12 +78,15 @@ lambda_ratio = Eeps_sum ./ Eeps_pow;
 
 Kfore = [log(K_ss_pop)*0.01, 0.99;   % Small persistence, close to SS
          log(K_ss_lib)*0.01, 0.99];
-
 Rfore = [-.5 0; ...
     -.5 0]; %start them at some random Rfore
 
-Rswitch = [.95 .05; ...
-    .05 .95];
+%you're about to see something horrible. Don't read it. I'm tired
+Kfored = zeros(nd, nr, 2); Rfored = Kfored;
+Kfored(1,:,:) = Kfore; Kfored(2,:,:) = Kfore;
+Rfored(1,:,:) = Rfore; Rfored(2,:,:) = Rfore;
+Kfore = Kfored; Rfore = Rfored;
+
 %% prep VFI
 
 terms = struct('alpha', alpha, ...
@@ -96,7 +99,8 @@ terms = struct('alpha', alpha, ...
     'pil', pil, ...
     'Kfore', Kfore, ...
     'Rfore', Rfore, ...
-    'Rswitch', Rswitch, ... 
+    'dgrid', dgrid, ... 
+    'pid', pid, ...
     'captax', captax, ...
     'taugrid', taugrid, ...
     'G', 0, ...
@@ -106,8 +110,7 @@ terms = struct('alpha', alpha, ...
     'rnseed', 1234567);
 
 rng("default")
-T = 1000;
-% Rt = predict.sim(T,2,"default",Rguess);
+T = 5000;
 
 verbose = true;
 forearray = cell(50,1);
@@ -136,7 +139,7 @@ EVarray = cell(1);
 Garray = cell(1);
 Kforearray = cell(1);
 Rforearray = cell(1);
-nlms = cell(1,2);
+nlms = cell(1,2,2);
 
 terms.starter_distr = g1;
 
@@ -155,7 +158,7 @@ while foredist > vTol
 
 
     fprintf("\nGetting Regression Data\n")
-    [Kprdat Rdata Prdata distr_array V G EV] = ...
+    [Kprdat Rdata Prdata ddata distr_array V G EV] = ...
         ks.getRegData(T, terms, vTol, verbose);
 
     fprintf('\n\nRegime 1: %d periods, Regime 2: %d periods\n', ...
@@ -169,60 +172,106 @@ while foredist > vTol
     K_curr = log(Kprdat(1:end-1));
     R_curr = Rdata(1:end-2);
     R_next = Rdata(2:end-1);
+    d_curr = ddata(1:end-1);
+
+    % indices for four (R_t, d_t) states
+    ix11 = (R_curr == 1 & d_curr == 1);
+    ix12 = (R_curr == 1 & d_curr == 2);
+    ix21 = (R_curr == 2 & d_curr == 1);
+    ix22 = (R_curr == 2 & d_curr == 2);
 
     %           updating K coefficients
     % Capital law: log K_{t+1} = a(R_t) + b(R_t) log K_t
-    if sum(R_curr == 1) > 10
-        kmdl1 = fitlm(K_curr(R_curr==1), K_next(R_curr==1));
-        b1 = kmdl1.Coefficients.Estimate;
+    bK11 = NaN(2,1);  % [a11; b11]
+    bK12 = NaN(2,1);
+    bK21 = NaN(2,1);
+    bK22 = NaN(2,1);
+    
+    if sum(ix11) > 10
+        mdl11   = fitlm(K_curr(ix11), K_next(ix11));
+        bK11    = mdl11.Coefficients.Estimate;   % [const; slope]
+    end
+    if sum(ix12) > 10
+        mdl12   = fitlm(K_curr(ix12), K_next(ix12));
+        bK12    = mdl12.Coefficients.Estimate;
+    end
+    if sum(ix21) > 10
+        mdl21   = fitlm(K_curr(ix21), K_next(ix21));
+        bK21    = mdl21.Coefficients.Estimate;
+    end
+    if sum(ix22) > 10
+        mdl22   = fitlm(K_curr(ix22), K_next(ix22));
+        bK22    = mdl22.Coefficients.Estimate;
     end
     
-    if sum(R_curr == 2) > 10
-        kmdl2 = fitlm(K_curr(R_curr==2), K_next(R_curr==2));
-        b2 = kmdl2.Coefficients.Estimate;
-    end
-    Kfore_new = [b1'; b2'];
-    kforedist = norm(Kfore_new-Kfore, 'inf');
+    % stack as 4×2: rows = (R,d) pairs in fixed order
+    % e.g. row1:(1,1), row2:(1,2), row3:(2,1), row4:(2,2)
+    Kfore1 = [bK11'; bK21'];
+    Kfore2 = [bK12'; bK22'];
+    Kfore_new(1,:,:) = Kfore1; Kfore_new(2,:,:) = Kfore2;
 
-    % Update K forecast
-    Kfore = 0.8*Kfore + 0.2*Kfore_new;
+    kforedist = compute.dist(Kfore_new,Kfore, 3);
+    Kfore     = 0.8*Kfore + 0.2*Kfore_new;
     terms.Kfore = Kfore;
-
     %              Updating R Coefficients
     % R law = Pr(R' = 1 | R) = exp(1/(d(R) + e(R)lnK))
 
     % Binary indicator for next regime being 1
-    Y = (R_next == 1);  
-    if sum(R_curr == 1) > 10
-        X1   = K_curr(R_curr == 1);
+    Y = (R_next == 1);  % 0/1
+    
+    br11 = NaN(2,1); br12 = NaN(2,1);
+    br21 = NaN(2,1); br22 = NaN(2,1);
+    
+    opts = statset('Display','off');  % silence if you want
+    
+    % (R_t,d_t) = (1,1)
+    if sum(ix11) > 10
+        X1    = K_curr(ix11);
         X1_std = (X1 - mean(X1)) / std(X1);
-        Y1   = Y(R_curr == 1);       % 0/1
-        opts = statset('Display','iter');
-        nlm1 = fitnlm(X1_std, Y1, mymodelfun, beta0_1);
-        br1  = nlm1.Coefficients.Estimate;   % [beta0; beta1]
+        Y1    = Y(ix11);
+        nlm11 = fitnlm(X1_std, Y1, mymodelfun, beta0_1, 'Options', opts);
+        br11  = nlm11.Coefficients.Estimate;   % [beta0; beta1]
     end
-
-%     scatter(X1 , Y1)
-%     hold on
-%     fplot(@(kk) mymodelfun(nlm1.Coefficients.Estimate, kk), [min(X1), max(X1)])
-%     hold off
-
-    if sum(R_curr == 2) > 10
-        X2   = K_curr(R_curr == 2);
+    
+    % (1,2)
+    if sum(ix12) > 10
+        X2    = K_curr(ix12);
         X2_std = (X2 - mean(X2)) / std(X2);
-        Y2   = Y(R_curr == 2);
-        nlm2 = fitnlm(X2_std, Y2, mymodelfun, beta0_2);
-        br2  = nlm2.Coefficients.Estimate;
+        Y2    = Y(ix12);
+        nlm12 = fitnlm(X2_std, Y2, mymodelfun, beta0_1, 'Options', opts);
+        br12  = nlm12.Coefficients.Estimate;
     end
-    Rfore_new = [br1'; br2'];
-    % Update K forecast
+    
+    % (2,1)
+    if sum(ix21) > 10
+        X3    = K_curr(ix21);
+        X3_std = (X3 - mean(X3)) / std(X3);
+        Y3    = Y(ix21);
+        nlm21 = fitnlm(X3_std, Y3, mymodelfun, beta0_2, 'Options', opts);
+        br21  = nlm21.Coefficients.Estimate;
+    end
+    
+    % (2,2)
+    if sum(ix22) > 10
+        X4    = K_curr(ix22);
+        X4_std = (X4 - mean(X4)) / std(X4);
+        Y4    = Y(ix22);
+        nlm22 = fitnlm(X4_std, Y4, mymodelfun, beta0_2, 'Options', opts);
+        br22  = nlm22.Coefficients.Estimate;
+    end
+
+    Rfore1 = [br11'; br21'];
+    Rfore2 = [br12'; br22'];
+    Rfore_new(1,:,:) = Rfore1; Rfore_new(2,:,:) = Rfore2;
+
     testK = linspace(min(log(K_curr)), max(log(K_curr)), nk);
     p_old = ks.forecastR(Rfore,testK);
     p_new = ks.forecastR(Rfore_new,testK);
-    rforedist = norm(p_new - p_old, 'inf');
-    nlms{iter_ct, 1} = nlm1;
-    nlms{iter_ct, 2} = nlm2;
-
+    rforedist = compute.dist(p_new, p_old, 3);
+    nlms{iter_ct, 1, 1} = nlm11; nlms{iter_ct, 1, 2} = nlm11;
+    nlms{iter_ct, 2, 1} = nlm21; nlms{iter_ct, 2, 2} = nlm22;
+    
+    % Update R forecast
     Rfore = 0.8*Rfore + 0.2*Rfore_new;
     terms.Rfore = Rfore;
 
@@ -250,20 +299,50 @@ while foredist > vTol
     % grid on;
     % set(gca,'FontSize',12);
 
-    fprintf('Regime 1: log K'' = %0.4f + %0.4f log K\n', b1(1), b1(2));
-    fprintf('Regime 1: Pr R pr = 1 = exp((%0.4f + %0.4f log K)^-1)\n', br1(1), br1(2));
+% Kfore_new and Rfore_new are 4×2: [a  b]
+% rows: (R,d) = (1,1),(1,2),(2,1),(2,2)
 
-    fprintf('Regime 2: log K'' = %0.4f + %0.4f log K\n', b2(1), b2(2));
-    fprintf('Regime 2: Pr R pr = 1 = exp((%0.4f + %0.4f log K)^-1)\n', br2(1), br2(2));
-
-    fprintf("\nCapital: R2 for pop = %0.6f\nR2 for lib = %0.6f", ...
-        kmdl1.Rsquared.Adjusted, ...
-        kmdl2.Rsquared.Adjusted)
-
-    fprintf("\nRegime Guessing Distance: %1.4f", ...
-        rforedist)
+    fprintf('\nCapital law (log K'' = a + b log K):\n');
+    fprintf('  R=1, d=1: a = %0.4f, b = %0.4f\n', Kfore_new(1,1,1), Kfore_new(1,1,2));
+    fprintf('  R=2, d=1: a = %0.4f, b = %0.4f\n', Kfore_new(1,2,1), Kfore_new(1,2,2));
+    fprintf('  R=1, d=2: a = %0.4f, b = %0.4f\n', Kfore_new(2,1,1), Kfore_new(2,1,2));
+    fprintf('  R=2, d=2: a = %0.4f, b = %0.4f\n', Kfore_new(2,2,1), Kfore_new(2,2,2));
+    
+    fprintf('\nRegime transition (Pr(R''=1 | R,d,K) = exp((beta0 + beta1 log K)^-1)):\n');
+    fprintf('  R=1, d=1: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(1,1,1), Rfore_new(1,1,2));
+    fprintf('  R=2, d=1: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(1,2,1), Rfore_new(1,2,2));
+    fprintf('  R=1, d=2: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(2,1,2), Rfore_new(2,1,2));
+    fprintf('  R=2, d=2: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(2,2,1), Rfore_new(2,2,2));
+    
+    fprintf('\nCapital regressions (log K'' on log K):\n');
+    
+    if exist('mdl11','var')
+        fprintf('  R=1, d=1: R2 = %0.6f\n', mdl11.Rsquared.Adjusted);
+    else
+        fprintf('  R=1, d=1: R2 =   n/a (too few obs)\n');
+    end
+    
+    if exist('mdl12','var')
+        fprintf('  R=1, d=2: R2 = %0.6f\n', mdl12.Rsquared.Adjusted);
+    else
+        fprintf('  R=1, d=2: R2 =   n/a (too few obs)\n');
+    end
+    
+    if exist('mdl21','var')
+        fprintf('  R=2, d=1: R2 = %0.6f\n', mdl21.Rsquared.Adjusted);
+    else
+        fprintf('  R=2, d=1: R2 =   n/a (too few obs)\n');
+    end
+    
+    if exist('mdl22','var')
+        fprintf('  R=2, d=2: R2 = %0.6f\n', mdl22.Rsquared.Adjusted);
+    else
+        fprintf('  R=2, d=2: R2 =   n/a (too few obs)\n');
+    end
+        
+    fprintf('Regime guessing distance: %1.4f\n', rforedist);
     foredist = max(rforedist, kforedist);
-    fprintf("\nForedist = %0.6f\n\n", foredist)
+    fprintf('Foredist = %0.6f\n\n', foredist);
 
     iter_ct = iter_ct + 1;
 
@@ -291,6 +370,7 @@ while foredist > vTol
     % legend('Current R_t = 1','Current R_t = 2','Location','best');
     % grid on;
 
+    save ../d/ks_rfore_endo_all.mat
+
 end
 
-save ../d/ks_rfore_endo.mat

@@ -1,14 +1,16 @@
 classdef ks
     methods(Static)
 
-        function [Kprdata, Rdata, Prdata, distr_array, V, G, EV] = getRegData(T, terms, vTol, verbose)
+        function [Kprdata, Rdata, Prdata, ddata, distr_array, V, G, EV] = ...
+                getRegData(T, terms, vTol, verbose)
 
-            pil = terms.pil;
             agrid = terms.agrid;
             lgrid = terms.lgrid;
             Kgrid = terms.Kgrid;
             na = length(agrid); nl = length(lgrid); nm = length(Kgrid);
 
+            pil = terms.pil;
+            pid = terms.pid;
 
             % forecasting K, R. outputs nkx1 and nkxr forecasts
             Kpr = ks.forecastK(terms.Kfore, Kgrid); % nk x r
@@ -24,34 +26,37 @@ classdef ks
             [V, G, EV] = ks.solve(terms, vTol, verbose);
 
             % Votes  
-            [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, Kpr, Kgrid);
+            [EV1, EV2, Votes_EV] = gov.getVotingExpectations(V, pil, pid, Kpr, Kgrid);
 
             % get inital conditions for the regression data
             Kprdata = zeros(T,1);
             distr_array = cell(T,1);
             g0 = terms.starter_distr;
             g0_cond = compute.condense(g0, amu, agrid);
-            K0 = sum(g0_cond,1)*agrid';
+            K0 = dot(squeeze(sum(sum(g0_cond,1),2)),agrid);
             Kprdata(1) = K0; distr_array{1} = g0;
 
             % start with regime one, then check
             Rdata = ones(T,1);
             Prdata = Rdata;
 
+            ddata = predict.sim(T,2,"default",terms.pid);
+
             fprintf("Generating regression data...\n")
             for t = 2:1:T
                 Kt = Kprdata(t-1);
                 Rt = Rdata(t);
+                dt = ddata(t);
                 g_prev = distr_array{t-1};
                 
                 [ix, we] = compute.weight(Kgrid, Kt);
-                g_t = we*G(ix, Rt, :,:) + (1-we)*G(ix+1, Rt, :, :);
+                g_t = we*G(ix, Rt, dt, :,:) + (1-we)*G(ix+1, Rt, dt, :, :);
                 g_t = squeeze(g_t);
                 g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
 
                 distr_array{t} = g_today;
                 acond = compute.condense(g_today, amu, agrid);
-                Kpr = sum(acond,1)*agrid';
+                Kpr = dot(squeeze(sum(sum(acond,1),2)),agrid);
                 Kprdata(t) = Kpr;
 
                 % now use K today, Kpr, and R today to back out max vote,
@@ -61,12 +66,13 @@ classdef ks
                 % then force it back to binary (otherwise there's a decimal
                 % value on whether or not I'll vote for R = 1)
 
-                todays_votes = we*Votes_EV(ix, Rt, :, :) + ...
-                    (1-we)*Votes_EV(ix+1, Rt, :, :);
+                todays_votes = we*Votes_EV(ix, Rt, dt, :, :) + ...
+                    (1-we)*Votes_EV(ix+1, Rt, dt, :, :);
                 todays_votes = squeeze(todays_votes);
                 todays_votes = (todays_votes >= .5);
 
-                vote_total = sum(sum(acond.*todays_votes));
+                vote_total = sum(sum(sum(squeeze(acond(dt,:,:)).*todays_votes)))*2;
+                %multiplying by 2 bc each dimension has 50% of mass
                 Prdata(t) = vote_total;
                 if (vote_total <=.5) 
                     Rdata(t+1) = 2; 
@@ -87,20 +93,19 @@ classdef ks
             alpha = terms.alpha;
             sigma = terms.sigma;
             phi = terms.phi;
+
             lgrid = terms.lgrid; nl = length(lgrid);
             agrid = terms.agrid; na = length(agrid);
             Kgrid = terms.Kgrid; nm = length(Kgrid);
-            pil = terms.pil;
+            dgrid = terms.dgrid; nd = length(dgrid);
+            pil = terms.pil; pid = terms.pid;
             g = terms.G;
 
-            Kfore = terms.Kfore;
-            Rfore = terms.Rfore;
             etagrid = terms.etagrid;
             taugrid = terms.taugrid;
-            delta = terms.delta;
             captax = terms.captax;
 
-            V = zeros(nm, nr, nl, na);
+            V = zeros(nm, nr, nd, nl, na);
             G = V;
             V0 = V;
             TV = V; TG = G;
@@ -108,15 +113,17 @@ classdef ks
             % set up V so that it doesn't start empty
             % using believable r and w values: 4% interest, w = 1.3
             scale = .25;
-            for ir = 1:nr 
-                for im = 1:nm
-                    for ia = 1:na
-                        kval = agrid(ia);
-                        for il = 1:nl
-                            yval = scale*(1+0.04*(1-captax(il)))*kval + ...
-                                1.3*lgrid(il) - 0.04*phi;
-                            ymin = max(1e-10, yval);
-                            V(im, ir, il, ia) = HH.u(ymin, sigma);
+            for id = 1:nd
+                for ir = 1:nr 
+                    for im = 1:nm
+                        for ia = 1:na
+                            kval = agrid(ia);
+                            for il = 1:nl
+                                yval = scale*(1+0.04*(1-captax(il)))*kval + ...
+                                    1.3*lgrid(il) - 0.04*phi;
+                                ymin = max(1e-10, yval);
+                                V(im, ir, id, il, ia) = HH.u(ymin, sigma);
+                            end
                         end
                     end
                 end
@@ -128,47 +135,50 @@ classdef ks
 
             %then getting forecasted prices once, given future K.
             % nmxnr grids
-            rgrid1 = vaas.calcr(alpha, delta, Kgrid, etagrid(1));
-            rgrid2 = vaas.calcr(alpha, delta, Kgrid, etagrid(2));
-            wgrid1 = vaas.calcw(alpha, Kgrid, etagrid(1));
-            wgrid2 = vaas.calcw(alpha, Kgrid, etagrid(2));
-
-            rgrid = [rgrid1' rgrid2']; wgrid = [wgrid1' wgrid2']; 
+            rgrid = zeros(nm, nr, nd);
+            wgrid = rgrid;
+            for ir = 1:nr
+                for id = 1:nd
+                   rgrid(:,ir,id)  = vaas.calcr(alpha, dgrid(id), Kgrid, etagrid(ir));
+                   wgrid(:,ir,id) = vaas.calcw(alpha, Kgrid, etagrid(ir));
+                end
+            end
 
             % calculating lambda from prices.
-            lambda_grid  = (wgrid .^ terms.taugrid) .* ...
+            lambda_grid  = (wgrid(:,:,1) .^ terms.taugrid) .* ...
                 (ones(size(wgrid,1),1) * terms.lamval);
-
 
             Kpr = terms.Kpr;
             Rpr = terms.Rpr;
 
             while dist > vTol
                 
-                EV = ks.getExpectation(V, pil, Kpr, Rpr, Kgrid);
+                EV = ks.getExpectation(V, pil, pid, Kpr, Rpr, Kgrid);
 
                 % now converging on the value function and decision rule
                 % for every capital-regime combo (EGM bc this is 50
                 % convergences)
 
-                for im = 1:nm
-                    for ir = 1:nr
-                        pol_terms = terms;
-                        pol_terms.eta = terms.etagrid(ir);
-                        pol_terms.tau = taugrid(ir);
-                        pol_terms.r = rgrid(im, ir);
-                        pol_terms.w = wgrid(im, ir);
-                        pol_terms.lamval = lambda_grid(im, ir);
-                        [TV(im, ir, :,:), TG(im, ir,:,:)]= egm.solve(...
-                            pol_terms, ...
-                            squeeze(EV(im, ir, :,:)), ...
-                            squeeze(V(im, ir,:,:)));
-                    end 
+                for id = 1:nd
+                    for im = 1:nm
+                        for ir = 1:nr
+                            pol_terms = terms;
+                            pol_terms.eta = terms.etagrid(ir);
+                            pol_terms.tau = taugrid(ir);
+                            pol_terms.r = rgrid(im, ir, id);
+                            pol_terms.w = wgrid(im, ir, id);
+                            pol_terms.lamval = lambda_grid(im, ir);
+                            [TV(im, ir, id, :,:), TG(im, ir, id,:,:)]= ...
+                                egm.solve(pol_terms, ...
+                                squeeze(EV(im, ir, id, :,:)), ...
+                                squeeze(V(im, ir, id,:,:)));
+                        end 
+                    end
                 end
 
                 % check distance
-                dist = compute.dist(V, TV, 4);
-                kdist = compute.dist(G, TG, 4);
+                dist = compute.dist(V, TV, 5);
+                kdist = compute.dist(G, TG, 5);
             
                 if mod(iter_ct, 25) == 0
                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
@@ -206,74 +216,102 @@ classdef ks
         % given the transition grid. Then weight between the two possible
         % regimes based on the probability of transition given current
         % regime & capital. Then finally interpolate across the expected
-        % moments of future capital. 
-        function EV = getExpectation(V, pil, Kpr, Rpr, Kgrid)
+        % moments of future capital. And I added weighting on a capital
+        % depreciation shock. Is it time for me to give up I want to give
+        % up
+        function EV = getExpectation(V, pil, pid, Kpr, Rpr, Kgrid)
 
-            [nm, nr, ne, na] = size(V);
+            [nm, nr, nd, ne, na] = size(V);
             EV1 = zeros(size(V));
             EV2 = EV1;
             EV3 = EV1;
+            EV4 = EV3;
 
             [ix, we] = ks.weight(Kgrid,Kpr);
 
             % step 1: updating EV(a,e)
-            for im = 1:nm
-                for ir = 1:nr
-                    for ia = 1:na
-                        for ie = 1:ne
-                            EV1(im, ir, ie, ia) = pil(ie,:)*squeeze(V(im, ir, :, ia));
+            for id = 1:nd
+                for im = 1:nm
+                    for ir = 1:nr
+                        for ia = 1:na
+                            for ie = 1:ne
+                                EV1(im, ir, id, ie, ia) = pil(ie,:)*squeeze(V(im, ir, id, :, ia));
+                            end
                         end
                     end
                 end
             end
             
             % step 2: weighting based on transition probability
-            for im = 1:nm
-                for ir = 1:nr
-                    EV2(im, ir, :, :) = Rpr(im,ir)*EV1(im, 1, :, :) + ...
-                        (1-Rpr(im, ir))*EV1(im, 2, :, :);
+            for id = 1:nd
+                for im = 1:nm
+                    for ir = 1:nr
+                        p_next1 = Rpr(id,im,ir);            % P(R' = 1 | K,R,δ)
+                        EV2(im, ir, id, :, :) = p_next1*EV1(im, 1, id, :, :) + ...
+                            (1-p_next1)*EV1(im, 2, id, :, :);
+                    end
                 end
             end
 
             % step 3: weighting based on forecasted K
-            for im = 1:nm
-                for ir = 1:nr
-                    ix_m = ix(im, ir); we_m = we(im, ir); 
-                    EV3(im, ir,:,:) = we_m*EV2(ix_m, ir, :, :) ...
-                        + (1-we_m)*EV2(ix_m+1, ir, :, :);
+            for id = 1:nd
+                for im = 1:nm
+                    for ir = 1:nr
+                        ix_m = ix(id, im, ir); we_m = we(id, im, ir); 
+                        EV3(im, ir, id, :,:) = we_m*EV2(ix_m, ir, id, :, :) ...
+                            + (1-we_m)*EV2(ix_m+1, ir, id, :, :);
+                    end
                 end
             end
+            
+            %step 4: weighting based on delta transition probability
+            for id = 1:nd
+                EV4(:,:,id,:,:) = pid(id,1)*EV3(:,:,1,:,:) + ...
+                    (1-pid(id,1))*EV3(:,:,2,:,:);
+            end
 
-            EV = EV3;
+            EV = EV4;
         end
 
         function kpr = forecastK(fore,k)            
 
-            % preds = nk x 2
-            preds = [ones(length(k),1), log(k)'];
-            preds = preds'; % 2 x nk            
+            [nd, ~, ~] = size(fore);
+            kpr = zeros(nd, length(k), 2);
 
-            preds1 = fore(1,:)*preds; % regime 1
-            preds2 = fore(2,:)*preds; % regime 2
-            preds = [preds1' preds2'];
-            kpr = exp(preds);
+            for id = 1:nd
+                % preds = nk x 2
+                preds = [ones(length(k),1), log(k)'];
+                preds = preds'; % 2 x nk            
+    
+                dfore = squeeze(fore(id, :, :));
+                preds1 = dfore(1,:)*preds; % regime 1
+                preds2 = dfore(2,:)*preds; % regime 2
+                preds = [preds1' preds2'];
+                kpr(id, :, :) = exp(preds);
+            end
         end
 
 
 
         function pr = forecastR(fore,k)
 
+            [nd, ~, ~] = size(fore);
+            pr = zeros(nd, length(k), 2);
+
             % preds = nk x 2, fore = 2x2
             % there is a way to do this with matrix algebra that i cba to
             % figure out
-            preds = [ones(length(k),1), log(k)'];
-            z1 = preds * fore(1,:)';            % nk x 1
-            z2 = preds * fore(2,:)';            % nk x 1
-        
-            pr1 = 1./(1 + exp(-z1));            % P(R' = 1 | R = 1, K)
-            pr2 = 1./(1 + exp(-z2));            % P(R' = 1 | R = 2, K)
-        
-            pr  = [pr1 pr2];                    % nk x 2, each entry in (0,1)
+            for id = 1:nd
+                dfore = squeeze(fore(id, :, :));
+                preds = [ones(length(k),1), log(k)'];
+                z1 = preds * dfore(1,:)';            % nk x 1
+                z2 = preds * dfore(2,:)';            % nk x 1
+            
+                pr1 = 1./(1 + exp(-z1));            % P(R' = 1 | R = 1, K)
+                pr2 = 1./(1 + exp(-z2));            % P(R' = 1 | R = 2, K)
+            
+                pr(id, :, :)  = [pr1 pr2];                    % nk x 2, each entry in (0,1)
+            end
         end
 
         function [ixmat, wemat] = weight(Kgrid, Kpr)

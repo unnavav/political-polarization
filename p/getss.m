@@ -24,12 +24,13 @@ addpath(genpath(pwd));
 vTol = 1e-5; dTol = 1e-2;
 alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
 
-neta = 20;
-ntau = 20;
+neta = 5;
+ntau = 5;
 nl = 7;
 na = 100;
 nmu = na*10;
 np = 2;
+nd = 2;
 
 al = 0+phi; ah = 50+phi;
 
@@ -82,8 +83,13 @@ for im = 1:nmu
     end 
 end
 
-etagrid = linspace(.0,.9,neta);
-taugrid = linspace(.0,.9,ntau);
+% delta shock grid
+dgrid = [0.04 0.08];
+pid = [.94 0.06;
+    .5 .5]; %totally made this up
+
+etagrid = linspace(.0,.45,neta);
+taugrid = linspace(.0,.45,ntau);
 % captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
 % captax = linspace(0, .20, nl);
@@ -115,10 +121,10 @@ minEV_diffs = zeros(neta, ntau);
 
 %% migration ss's
 
-TV = zeros(nl, na);
+TV = zeros(nd, nl, na);
 TG = TV; V= TV;
 
-EV = zeros(nl, na);
+EV = zeros(nd, nl, na);
 
 %prepare for VFI
 terms = struct('beta', beta, ...
@@ -134,7 +140,7 @@ mkdir("../d/",folname)
 newdir = strcat("../d/", folname);
 cd(newdir)
 
-for i = 4:neta
+for i = 1:neta
     eta = etagrid(i);
 
     for j = 1:ntau
@@ -152,7 +158,8 @@ for i = 4:neta
             fprintf("\nA guess: %4.8f. Begin iteration for solution...\n", kval)
             fprintf("\t Solving value function:\n")
     
-            terms.r = vaas.calcr(alpha, delta, kval, eta);
+            rgrid = vaas.calcr(alpha, dgrid, kval, eta);
+            terms.r = rgrid(1); % just an initialization value
             terms.w = vaas.calcw(alpha, kval, eta);
     
             % we have to get the value of lambda such that taxation 
@@ -165,42 +172,55 @@ for i = 4:neta
     
             iter_ct = 1;
             dist = 10;
-            G = zeros(nl,na);
+            G = zeros(nd, nl,na);
     
             % set up V so that it doesn't start empty
             scale = 1;
-            for ia = 1:na
-                k_val = agrid(ia);
-                for il = 1:nl
-                    yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*phi;
-                    ymin = max(1e-10, yval);
-                    V(il, ia) = log(ymin);
+            for id = 1:nd
+                for ia = 1:na
+                    k_val = agrid(ia);
+                    for il = 1:nl
+                        yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*phi;
+                        ymin = max(1e-10, yval);
+                        V(id,il, ia) = log(ymin);
+                    end
                 end
             end
             
             %init expected vals
-            for ia = 1:na
-                for il = 1:nl
-                    EV(il, ia) = pil(il,:)*V(:,ia);
+            for id = 1:nd
+                for ia = 1:na
+                    for il = 1:nl
+                        EV(id,il, ia) = pid(id,1)*dot(pil(il,:),V(1,:,ia)) + ...
+                            (1-pid(id,1))*dot(pil(il,:),V(2,:,ia));
+                    end
                 end
             end
     
             while dist > vTol
                 
-                for ia = 1:na
-                    for il = 1:nl
-                        EV(il, ia) = pil(il,:)*V(:,ia);
+                for id = 1:nd
+                    for ia = 1:na
+                        for il = 1:nl
+                            EV(id,il, ia) = pid(id,1)*dot(pil(il,:),V(1,:,ia)) + ...
+                                (1-pid(id,1))*dot(pil(il,:),V(2,:,ia));
+                        end
                     end
                 end
                 % now converging on the value function and decision rule
                 % for every capital-regime combo (EGM bc this is 50
                 % convergences)
-
-                [TV, TG]= egm.solve(terms, EV, V);
+                for id = 1:nd
+                    terms.r = rgrid(id);
+                    dV = squeeze(V(id, :,  :));
+                    dEV = squeeze(EV(id, :,  :));
+                    [TVd, TGd]= egm.solve(terms, dEV, dV);
+                    TV(id,:,:) = TVd; TG(id,:,:) = TGd;
+                end
 
                 % check distance
-                dist = compute.dist(V, TV, 2);
-                kdist = compute.dist(G, TG, 2);
+                dist = compute.dist(V, TV, 3);
+                kdist = compute.dist(G, TG, 3);
             
                 if mod(iter_ct, 250) == 0
                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
@@ -230,8 +250,9 @@ for i = 4:neta
             Garray{i,j} = G;
             EVarray{i,j} = EV; 
     
+            
             [Warray{i,j}, Karray{i,j}] = HH.getDist(Garray{i,j}, amu, agrid, ...
-                pil, false);      
+                pil, pid, false);      
         
             kdist = Karray{i,j} - kval;
         
@@ -267,10 +288,10 @@ for i = 4:neta
             p = zeros(size(acond));
         end
 
-        parray{i,j} = sum(sum(p));
+        parray{i,j} = sum(sum(sum(p)));
         fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
 
-        filename = strcat("results_rho90sig3_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
+        filename = strcat("delta_results_rho90sig3_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
         save(filename)
 
     end

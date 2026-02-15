@@ -248,14 +248,17 @@ classdef compute
         end
 
         function distr = condense(adistr, amu, agrid)
-            [nl, nmu] = size(adistr);
+            [nd, nl, nmu] = size(adistr);
             [na] = length(agrid);
-            distr = zeros(nl, na);
-            for im = 1:nmu
-                [ix, we] = compute.weight(agrid, amu(im));
-
-                distr(:, ix) = distr(:, ix) + we*adistr(:, im);
-                distr(:, ix+1) = distr(:, ix+1) + (1-we)*adistr(:, im);
+            distr = zeros(nd, nl, na);
+            for id = 1:nd
+                for im = 1:nmu
+                    [ix, we] = compute.weight(agrid, amu(im));
+    
+                    distr(id, :, ix) = distr(id, :, ix) + we*adistr(id, :, im);
+                    distr(id, :, ix+1) = distr(id, :, ix+1) + ...
+                        (1-we)*adistr(id, :, im);
+                end
             end
         end
    
