@@ -240,7 +240,7 @@ classdef HH
             end 
             
             distrA2500 = squeeze(sum(sum(mu,2),1));
-            kagg = (amu + phi)*distrA2500;
+            kagg = (amu - phi)*distrA2500;
         end
 
         function [mu1, kagg] = transitDistr(g_t, mu_prev, amu, agrid, phi, pil)
@@ -300,7 +300,7 @@ classdef HH
             end
                               
             distrA2500 = squeeze(sum(sum(mu1,1),2));
-            kagg = dot((amu+ phi),distrA2500);
+            kagg = dot((amu - phi),distrA2500);
         end
 
         function [vdistr, winner] = map(VOTES, amu, agrid, adistr, pctDem)

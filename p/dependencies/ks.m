@@ -144,6 +144,7 @@ classdef ks
                    wgrid(:,ir,id) = vaas.calcw(alpha, Kgrid, etagrid(ir));
                 end
             end
+            phigrid = 0.1*(wgrid.*min(lgrid))./rgrid;
 
             % calculating lambda from prices.
             lambda_grid  = (wgrid(:,:,1) .^ terms.taugrid) .* ...
@@ -169,6 +170,7 @@ classdef ks
                             pol_terms.r = rgrid(im, ir, id);
                             pol_terms.w = wgrid(im, ir, id);
                             pol_terms.lamval = lambda_grid(im, ir);
+                            pol_terms.phi = phigrid(im, ir, id);
                             [TV(im, ir, id, :,:), TG(im, ir, id,:,:)]= ...
                                 egm.solve(pol_terms, ...
                                 squeeze(EV(im, ir, id, :,:)), ...

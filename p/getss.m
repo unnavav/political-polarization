@@ -21,8 +21,7 @@ addpath(genpath(pwd));
 
 %% params
 vTol = 1e-5; dTol = 1e-2;
-alpha = 0.36; delta = 0.04; beta = 0.96; sigma = 3; phi = -1;
-
+alpha = 0.36; delta = 0.04; beta = 0.96; sigma = 3; 
 neta = 5;
 ntau = 5;
 nl = 7;
@@ -31,7 +30,7 @@ nmu = na*10;
 np = 2;
 nd = 2;
 
-al = 0+phi; ah = 50+phi;
+al = 0; ah = 100;
 
 % initial r guess: 
 r = 0.04;
@@ -128,7 +127,6 @@ EV = zeros(nd, nl, na);
 %prepare for VFI
 terms = struct('beta', beta, ...
     'sigma', sigma, ...
-    'phi', phi, ...
     'agrid', agrid, ...
     'lgrid', lgrid, ...
     'pil', pil, ...
@@ -168,6 +166,14 @@ for i = 1:neta
             rgrid = vaas.calcr(alpha, dgrid, kval, eta);
             terms.r = rgrid(1); % just an initialization value
             terms.w = vaas.calcw(alpha, kval, eta);
+            if terms.r > 0
+                %10 pct of natural borrowing limit
+                phi = 0.1*(terms.w*min(lgrid))/terms.r;
+            else
+                phi = 0;
+            end
+
+            terms.phi  = phi;
     
             % we have to get the value of lambda such that taxation 
             % is redistributing everything. aka BB
@@ -178,7 +184,7 @@ for i = 1:neta
             terms.lamval = tot_inc/denom;
     
             iter_ct = 1;
-            dist = 10;
+            dist = 10; kdist = 10;
             G = zeros(nd, nl,na);
     
             % set up V so that it doesn't start empty
@@ -187,7 +193,8 @@ for i = 1:neta
                 for ia = 1:na
                     k_val = agrid(ia);
                     for il = 1:nl
-                        yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*phi;
+                        yval = scale*(1+terms.r)*k_val + ...
+                            terms.w*lgrid(il) - r*terms.phi;
                         ymin = max(1e-10, yval);
                         V(id,il, ia) = log(ymin);
                     end
@@ -204,7 +211,7 @@ for i = 1:neta
                 end
             end
     
-            while dist > vTol
+            while kdist > vTol
                 
                 for id = 1:nd
                     for ia = 1:na
@@ -253,6 +260,10 @@ for i = 1:neta
             end  
             fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
                 "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+            diff = TV - V;
+            fprintf('\n\t\tMin diff: %4.6f, Max diff: %4.6f', min(diff(:)), max(diff(:)));
+            fprintf('\n\t\tMean diff: %4.6f, Std diff: %4.6f', mean(diff(:)), std(diff(:)));
+
             Varray{i,j}= V;
             Garray{i,j} = G;
             EVarray{i,j} = EV; 
@@ -298,7 +309,7 @@ for i = 1:neta
         parray{i,j} = sum(sum(sum(p)));
         fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
      
-        filename = strcat(todayDateStr, "_persistdelta_results_rho90sig3.mat");
+        filename = strcat(todayDateStr, "_borrowing_lim_results_rho90sig3.mat");
         save(filename)
 
     end
