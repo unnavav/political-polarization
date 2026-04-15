@@ -93,3 +93,76 @@ title({'Log-Likelihood Surface: Regime 1 Transition Model', ...
 grid on;
 set(gca, 'FontSize', 12);
 hold off;
+
+
+%% fplot the different forecasts
+
+grid = linspace(log(Kgrid(1)), log(Kgrid(end)), 100);
+
+Kr1d1 = Kfore(1,1,1) + Kfore(1,1,2).*grid;
+Kr2d1 = Kfore(1,2,1) + Kfore(1,2,2).*grid;
+Kr1d2 = Kfore(2,1,1) + Kfore(2,1,2).*grid;
+Kr2d2 = Kfore(2,2,1) + Kfore(2,2,2).*grid;
+
+plot(grid,Kr1d1-grid)
+hold on;
+plot(grid,Kr1d2-grid)
+plot(grid,Kr2d1-grid)
+plot(grid,Kr2d2-grid)
+yline(0)
+legend('pop \delta = 0.04','pop \delta = 0.08', ...
+    'lib \delta = 0.04', 'lib \delta = 0.08', ...
+'FontSize', 18)
+
+Pr1d1 = mymodelfun(Rfore(1,1,:), grid);
+Pr2d1 = mymodelfun(Rfore(1,2,:), grid);
+Pr1d2 = mymodelfun(Rfore(2,1,:), grid);
+Pr2d2 = mymodelfun(Rfore(2,2,:), grid);
+
+plot(grid,Pr1d1)
+hold on;
+plot(grid,Pr1d2)
+plot(grid,Pr2d1)
+plot(grid,Pr2d2)
+yline(0)
+legend('pop \delta = 0.04','pop \delta = 0.08', ...
+    'lib \delta = 0.04', 'lib \delta = 0.08', ...
+    'FontSize', 18)
+
+%% panel written up by claude so it's easier 2 read
+
+figure;
+K_plot = Kgrid;
+labels = {'R=1 (Pop), δ low', 'R=1 (Pop), δ high', ...
+          'R=2 (Lib), δ low', 'R=2 (Lib), δ high'};
+colors = lines(4);
+
+sp = 1;
+for id = 1:2
+    for ir = 1:2
+        beta = squeeze(Rfore_new(id, ir, :));
+        z = beta(1) + beta(2) .* log(K_plot);
+        p = 1 ./ (1 + exp(-z));
+
+        subplot(2, 2, sp);
+        plot(K_plot, p, 'Color', colors(sp,:), 'LineWidth', 2);
+        yline(0.5, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1);
+        xlabel('K');
+        ylabel('P(Populist next)');
+        title(labels{sp});
+        ylim([0 1]);
+        grid on;
+
+        sp = sp + 1;
+    end
+end
+
+sgtitle('Regime Transition Probabilities over K');
+
+
+
+plot(K_curr(2801:2900))
+yyaxis right
+plot(d_curr(2801:2900)-1)
+hold on
+plot(R_curr(2801:2900)-1, '--o')

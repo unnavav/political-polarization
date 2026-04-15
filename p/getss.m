@@ -14,7 +14,6 @@
 
 restoredefaultpath;
 clear all; clc;
-cd ..
 addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
@@ -22,7 +21,7 @@ addpath(genpath(pwd));
 
 %% params
 vTol = 1e-5; dTol = 1e-2;
-alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
+alpha = 0.36; delta = 0.04; beta = 0.96; sigma = 3; phi = -1;
 
 neta = 5;
 ntau = 5;
@@ -140,6 +139,14 @@ mkdir("../d/",folname)
 newdir = strcat("../d/", folname);
 cd(newdir)
 
+
+% Get today's date as a datetime object
+t = datetime('today');
+
+% Convert the datetime object to a string with the specified format
+todayDateStr = string(t, 'yyyyMMdd');
+
+
 for i = 1:neta
     eta = etagrid(i);
 
@@ -149,7 +156,7 @@ for i = 1:neta
         fprintf("Migration Rate: %0.4f, Progressivity: %0.4f\n", eta, terms.tau);
 
         kl = 0;
-        kh = 15;
+        kh = 20;
         kval = (kl + kh)/2;
         kDist = 10;
         while kDist > dTol
@@ -252,7 +259,7 @@ for i = 1:neta
     
             
             [Warray{i,j}, Karray{i,j}] = HH.getDist(Garray{i,j}, amu, agrid, ...
-                pil, pid, false);      
+                pil, pid, phi, false);      
         
             kdist = Karray{i,j} - kval;
         
@@ -290,8 +297,8 @@ for i = 1:neta
 
         parray{i,j} = sum(sum(sum(p)));
         fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
-
-        filename = strcat("delta_results_rho90sig3_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
+     
+        filename = strcat(todayDateStr, "_persistdelta_results_rho90sig3.mat");
         save(filename)
 
     end

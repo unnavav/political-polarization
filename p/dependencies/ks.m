@@ -20,6 +20,7 @@ classdef ks
 
             nmu = na*10;
             amu = linspace(agrid(1), agrid(na), nmu);
+            phi = terms.phi;
     
             % solve for the household problem
             fprintf("Solving HH problem...\n")
@@ -52,7 +53,7 @@ classdef ks
                 [ix, we] = compute.weight(Kgrid, Kt);
                 g_t = we*G(ix, Rt, dt, :,:) + (1-we)*G(ix+1, Rt, dt, :, :);
                 g_t = squeeze(g_t);
-                g_today = HH.transitDistr(g_t, g_prev, amu, agrid, pil);
+                g_today = HH.transitDistr(g_t, g_prev, amu, agrid, phi, pil);
 
                 distr_array{t} = g_today;
                 acond = compute.condense(g_today, amu, agrid);

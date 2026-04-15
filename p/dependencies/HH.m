@@ -156,7 +156,7 @@ classdef HH
         % e.g. 25% of HH a's have savings of 100 under party A, but
         % only 50% of HH are party a, so in actuality only 12.5% of
         % distr is at 100. 
-        function [mu1, kagg] = getDist(G, amu, agrid, pil, pid, verbose)
+        function [mu1, kagg] = getDist(G, amu, agrid, pil, pid, phi, verbose)
 
             [nd, nl, ~] = size(G);
             nmu = length(amu);
@@ -240,10 +240,10 @@ classdef HH
             end 
             
             distrA2500 = squeeze(sum(sum(mu,2),1));
-            kagg = amu*distrA2500;
+            kagg = (amu + phi)*distrA2500;
         end
 
-        function [mu1, kagg] = transitDistr(g_t, mu_prev, amu, agrid, pil)
+        function [mu1, kagg] = transitDistr(g_t, mu_prev, amu, agrid, phi, pil)
 
             [nl, ~] = size(g_t);
             [nd,~, nmu] = size(mu_prev);
@@ -300,7 +300,7 @@ classdef HH
             end
                               
             distrA2500 = squeeze(sum(sum(mu1,1),2));
-            kagg = dot(amu,distrA2500);
+            kagg = dot((amu+ phi),distrA2500);
         end
 
         function [vdistr, winner] = map(VOTES, amu, agrid, adistr, pctDem)

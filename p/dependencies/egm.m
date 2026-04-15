@@ -16,7 +16,7 @@ classdef egm
             beta = pol_terms.beta;
             sigma = pol_terms.sigma;
 
-            phi = 1;
+            phi = pol_terms.phi;
 
             endoK = zeros(size(V));
             TV = endoK;

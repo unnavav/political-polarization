@@ -16,15 +16,15 @@ addpath(genpath(pwd));
 %% pulling in steady states of interest and relevant policies
 
 cd ../d/steadystates/
-load delta_results_rho90sig3_t0.4500_eta0.3375.mat
+load 20260323_persistdelta_results_rho90sig3.mat
 
-clearvars -except Warray Karray etagrid taugrid captax dgrid pid 
+clearvars -except Warray Karray etagrid taugrid captax dgrid pid parray
 
-g1 = Warray{1,5}; g2 = Warray{3,3};
-K_ss_pop = Karray{1,5}; K_ss_lib = Karray{3,3};
+g1 = Warray{1,3}; g2 = Warray{3,2};
+K_ss_pop = Karray{1,3}; K_ss_lib = Karray{3,2};
 
 etap = etagrid(1); etal = etagrid(3);
-taup = taugrid(5); taul = taugrid(3);
+taup = taugrid(3); taul = taugrid(2);
 
 taugrid = [taup taul]; etagrid = [etap etal];
 
@@ -143,6 +143,14 @@ nlms = cell(1,2,2);
 
 terms.starter_distr = g1;
 
+% Get today's date as a datetime object
+t = datetime('today');
+
+% Convert the datetime object to a string with the specified format
+todayDateStr = string(t, 'yyyyMMdd');
+
+filename = strcat('ks_rfore_endo_all_',todayDateStr ,'.mat');
+
 while foredist > vTol
 
     Kforearray{iter_ct} = Kfore;
@@ -224,57 +232,56 @@ while foredist > vTol
     
     opts = statset('Display','off');  % silence if you want
     
+    % I have to scale the logK because otherwise the difference is
+    % not big enough to get regression coefficients that work. 
     % (R_t,d_t) = (1,1)
     if sum(ix11) > 10
-        X1    = K_curr(ix11);
-        X1_std = (X1 - mean(X1)) / std(X1);
+        X1    = K_curr(ix11)*100000;
         Y1    = Y(ix11);
-        nlm11 = fitnlm(X1_std, Y1, mymodelfun, beta0_1, 'Options', opts);
+        nlm11 = fitnlm(X1, Y1, mymodelfun, beta0_1, 'Options', opts);
         br11  = nlm11.Coefficients.Estimate;   % [beta0; beta1]
     end
     
     % (1,2)
     if sum(ix12) > 10
-        X2    = K_curr(ix12);
-        X2_std = (X2 - mean(X2)) / std(X2);
+        X2    = K_curr(ix12)*100000;
         Y2    = Y(ix12);
-        nlm12 = fitnlm(X2_std, Y2, mymodelfun, beta0_1, 'Options', opts);
+        nlm12 = fitnlm(X2, Y2, mymodelfun, beta0_1, 'Options', opts);
         br12  = nlm12.Coefficients.Estimate;
     end
     
     % (2,1)
     if sum(ix21) > 10
-        X3    = K_curr(ix21);
-        X3_std = (X3 - mean(X3)) / std(X3);
+        X3    = K_curr(ix21)*100000;
         Y3    = Y(ix21);
-        nlm21 = fitnlm(X3_std, Y3, mymodelfun, beta0_2, 'Options', opts);
+        nlm21 = fitnlm(X3, Y3, mymodelfun, beta0_2, 'Options', opts);
         br21  = nlm21.Coefficients.Estimate;
     end
     
     % (2,2)
     if sum(ix22) > 10
-        X4    = K_curr(ix22);
-        X4_std = (X4 - mean(X4)) / std(X4);
+        X4    = K_curr(ix22)*100000;
         Y4    = Y(ix22);
-        nlm22 = fitnlm(X4_std, Y4, mymodelfun, beta0_2, 'Options', opts);
+        nlm22 = fitnlm(X4, Y4, mymodelfun, beta0_2, 'Options', opts);
         br22  = nlm22.Coefficients.Estimate;
     end
 
     Rfore1 = [br11'; br21'];
     Rfore2 = [br12'; br22'];
     Rfore_new(1,:,:) = Rfore1; Rfore_new(2,:,:) = Rfore2;
+    Rfore_new(:,:,2) = Rfore_new(:,:,2)*100000; % rescale back 2 normal
 
-    testK = linspace(min(log(K_curr)), max(log(K_curr)), nk);
+    % Update R forecast
+    Rfore = Rfore_new;
+    terms.Rfore = Rfore;
+
+    testK = linspace(min(K_curr), max(K_curr), nk);
     p_old = ks.forecastR(Rfore,testK);
     p_new = ks.forecastR(Rfore_new,testK);
     rforedist = compute.dist(p_new, p_old, 3);
     nlms{iter_ct, 1, 1} = nlm11; nlms{iter_ct, 1, 2} = nlm11;
     nlms{iter_ct, 2, 1} = nlm21; nlms{iter_ct, 2, 2} = nlm22;
     
-    % Update R forecast
-    Rfore = 0.8*Rfore + 0.2*Rfore_new;
-    terms.Rfore = Rfore;
-
     fprintf('K(1) = %0.4f\n', Kprdat(1));
     fprintf('K range: [%0.4f, %0.4f]\n', min(Kprdat), max(Kprdat));
 
@@ -309,10 +316,14 @@ while foredist > vTol
     fprintf('  R=2, d=2: a = %0.4f, b = %0.4f\n', Kfore_new(2,2,1), Kfore_new(2,2,2));
     
     fprintf('\nRegime transition (Pr(R''=1 | R,d,K) = exp((beta0 + beta1 log K)^-1)):\n');
-    fprintf('  R=1, d=1: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(1,1,1), Rfore_new(1,1,2));
-    fprintf('  R=2, d=1: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(1,2,1), Rfore_new(1,2,2));
-    fprintf('  R=1, d=2: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(2,1,2), Rfore_new(2,1,2));
-    fprintf('  R=2, d=2: beta0 = %0.4f, beta1 = %0.4f\n', Rfore_new(2,2,1), Rfore_new(2,2,2));
+    fprintf('  R=1, d=1: beta0 = %3.4f, beta1 = %3.4f\t (%i Periods)\n', ...
+        Rfore_new(1,1,1), Rfore_new(1,1,2), sum(ix11));
+    fprintf('  R=2, d=2: beta0 = %3.4f, beta1 = %3.4f\t (%i Periods)\n', ...
+        Rfore_new(1,2,1), Rfore_new(1,2,2), sum(ix12));
+    fprintf('  R=2, d=1: beta0 = %3.4f, beta1 = %3.4f\t (%i Periods)\n', ...
+        Rfore_new(2,1,1), Rfore_new(2,1,2), sum(ix21));
+    fprintf('  R=2, d=2: beta0 = %3.4f, beta1 = %3.4f\t (%i Periods)\n',...
+        Rfore_new(2,2,1), Rfore_new(2,2,2), sum(ix22));
     
     fprintf('\nCapital regressions (log K'' on log K):\n');
     
@@ -370,7 +381,7 @@ while foredist > vTol
     % legend('Current R_t = 1','Current R_t = 2','Location','best');
     % grid on;
 
-    save ../d/ks_rfore_endo_all.mat
-
+    cd ../d/
+    save(filename)
 end
 
