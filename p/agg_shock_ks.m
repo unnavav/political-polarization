@@ -88,6 +88,8 @@ Kfored(1,:,:) = Kfore; Kfored(2,:,:) = Kfore;
 Rfored(1,:,:) = Rfore; Rfored(2,:,:) = Rfore;
 Kfore = Kfored; Rfore = Rfored;
 
+Kmeans = zeros(nr, nd); Kstds = ones(nr, nd);
+
 %% prep VFI
 
 terms = struct('alpha', alpha, ...
@@ -109,8 +111,8 @@ terms = struct('alpha', alpha, ...
     'etagrid', etagrid, ...
     'lamval', lambda_ratio, ...
     'rnseed', 1234567, ...
-    'Kmeans', zeros(nr, nd), ...
-    'Kstds', ones(nr, nd));
+    'Kmeans', Kmeans, ...
+    'Kstds', Kstds);
 
 rng("default")
 
@@ -132,8 +134,8 @@ mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
 beta0_1 = [2.9957; 0];
 beta0_2 = [0.0513; 0];
 
-br11_prev = beta0_1(1); br12_prev = beta0_1(2);
-br21_prev = beta0_2(1); br22_prev = beta0_2(2);
+br11_prev = beta0_1; br12_prev = beta0_1;
+br21_prev = beta0_2; br22_prev = beta0_2;
 
 %% begin iteration
 
@@ -143,8 +145,8 @@ Varray = cell(1);
 EVarray = cell(1);
 Garray = cell(1);
 Kforearray = cell(1);
-Kmeans = cell(1);
-Kstds = cell(1);
+Kmeansarray = cell(1);
+Kstdsarray = cell(1);
 Rforearray = cell(1);
 nlms = cell(1,2,2);
 
@@ -305,6 +307,7 @@ while foredist > vTol
 
     terms.Kmeans = Kmeans;
     terms.Kstds = Kstds;
+    Kmeansarray{iter_ct} = Kmeans; Kstdsarray{iter_ct} = Kstds;
 
     Rfore1 = [br11'; br21'];
     Rfore2 = [br12'; br22'];
@@ -316,35 +319,43 @@ while foredist > vTol
     terms.Rfore = Rfore;
 
     testK = linspace(min(K_curr), max(K_curr), nk);
-    p_old = ks.forecastR(Rfore,testK);
-    p_new = ks.forecastR(Rfore_new,testK);
-    rforedist = compute.dist(p_new, p_old, 3);
+    p_old = ks.forecastR(Rfore,testK,Kmeans, Kstds);
+    p_new = ks.forecastR(Rfore_new,testK, Kmeans, Kstds);
+    foredist = compute.dist(p_new, p_old, 3);
     nlms{iter_ct, 1, 1} = nlm11; nlms{iter_ct, 1, 2} = nlm11;
     nlms{iter_ct, 2, 1} = nlm21; nlms{iter_ct, 2, 2} = nlm22;
     
     fprintf('K(1) = %0.4f\n', Kprdat(1));
     fprintf('K range: [%0.4f, %0.4f]\n', min(Kprdat), max(Kprdat));
 
-    % figure;
-    % 
-    % % 1) Two-panel plot
-    % subplot(2,1,1);
-    % plot(Prdata,'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
-    % yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);  % majority threshold
-    % xlabel('Time');
-    % ylabel('P(populism)');
-    % title('Probability of Voting for Populism');
-    % ylim([0 1]);
-    % grid on;
-    % set(gca,'FontSize',12);
-    % 
-    % subplot(2,1,2);
-    % plot(Kprdat,'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
-    % xlabel('Time');
-    % ylabel('Aggregate Capital K');
-    % title('Aggregate Capital Path');
-    % grid on;
-    % set(gca,'FontSize',12);
+    figure;
+
+    % 1) Three-panel plot
+    subplot(2,1,1);
+    plot(Prdata,'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
+    yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);  % majority threshold
+    xlabel('Time');
+    ylabel('P(populism)');
+    title('Probability of Voting for Populism');
+    ylim([0 1]);
+    grid on;
+    set(gca,'FontSize',12);
+
+    subplot(2,1,2);
+    plot(Kprdat,'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
+    xlabel('Time');
+    ylabel('Aggregate Capital K');
+    title('Aggregate Capital Path');
+    grid on;
+    set(gca,'FontSize',12);
+
+    subplot(3,1,3);
+    plot(ddata,'LineWidth',1.6,'Color',[0.5 0.25 0.42]);
+    xlabel('Time');
+    ylabel('Delta Shocks');
+    title('Aggregate Capital Path');
+    grid on;
+    set(gca,'FontSize',12);
 
 % Kfore_new and Rfore_new are 4×2: [a  b]
 % rows: (R,d) = (1,1),(1,2),(2,1),(2,2)
@@ -391,9 +402,7 @@ while foredist > vTol
         fprintf('  R=2, d=2: R2 =   n/a (too few obs)\n');
     end
         
-    fprintf('Regime guessing distance: %1.4f\n', rforedist);
-    foredist = max(rforedist, kforedist);
-    fprintf('Foredist = %0.6f\n\n', foredist);
+    fprintf('Regime guessing distance: %1.4f\n', foredist);
 
     iter_ct = iter_ct + 1;
 
