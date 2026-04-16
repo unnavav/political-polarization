@@ -160,6 +160,7 @@ end
 sgtitle('Regime Transition Probabilities over K');
 
 
+%% different figures
 
 plot(K_curr(2801:2900))
 yyaxis right

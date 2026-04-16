@@ -14,7 +14,8 @@ classdef ks
 
             % forecasting K, R. outputs nkx1 and nkxr forecasts
             Kpr = ks.forecastK(terms.Kfore, Kgrid); % nk x r
-            Rpr = ks.forecastR(terms.Rfore, Kgrid); % nk x r
+            Rpr = ks.forecastR(terms.Rfore, Kgrid, terms.Kmeans, ...
+                terms.Kstds); % nk x r
             terms.Kpr = Kpr;
             terms.Rpr = Rpr;
 
@@ -72,8 +73,10 @@ classdef ks
                 todays_votes = squeeze(todays_votes);
                 todays_votes = (todays_votes >= .5);
 
-                vote_total = sum(sum(sum(squeeze(acond(dt,:,:)).*todays_votes)))*2;
-                %multiplying by 2 bc each dimension has 50% of mass
+                slice = squeeze(acond(dt,:,:));
+                slice = slice / sum(slice(:));  % renormalize to sum to 1
+                vote_total = sum(sum(slice .* todays_votes));
+
                 Prdata(t) = vote_total;
                 if (vote_total <=.5) 
                     Rdata(t+1) = 2; 
@@ -296,7 +299,7 @@ classdef ks
 
 
 
-        function pr = forecastR(fore,k)
+        function pr = forecastR(fore,k,kmeans,kstds)
 
             [nd, ~, ~] = size(fore);
             pr = zeros(nd, length(k), 2);
@@ -305,10 +308,12 @@ classdef ks
             % there is a way to do this with matrix algebra that i cba to
             % figure out
             for id = 1:nd
+                means = squeeze(kmeans(:, id)); stds = squeeze(kstds(:,id));
                 dfore = squeeze(fore(id, :, :));
-                preds = [ones(length(k),1), log(k)'];
-                z1 = preds * dfore(1,:)';            % nk x 1
-                z2 = preds * dfore(2,:)';            % nk x 1
+                preds1 = [ones(length(k),1), ((log(k)-means(1))./stds(1))'];
+                preds2 = [ones(length(k),1), ((log(k)-means(2))./stds(2))'];
+                z1 = preds1 * dfore(1,:)';            % nk x 1
+                z2 = preds2 * dfore(2,:)';            % nk x 1
             
                 pr1 = 1./(1 + exp(-z1));            % P(R' = 1 | R = 1, K)
                 pr2 = 1./(1 + exp(-z2));            % P(R' = 1 | R = 2, K)

@@ -33,6 +33,7 @@ cd ../../p
 %% set up params to load into the KS algo
 
 vTol = 1e-6;
+T = 4000;
 
 % model params
 alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
@@ -107,10 +108,11 @@ terms = struct('alpha', alpha, ...
     'Kgrid', Kgrid, ...
     'etagrid', etagrid, ...
     'lamval', lambda_ratio, ...
-    'rnseed', 1234567);
+    'rnseed', 1234567, ...
+    'Kmeans', zeros(nr, nd), ...
+    'Kstds', ones(nr, nd));
 
 rng("default")
-T = 5000;
 
 verbose = true;
 forearray = cell(50,1);
@@ -130,6 +132,9 @@ mymodelfun = @(beta,x) 1./(1 + exp(-(beta(1) + beta(2).*x)));
 beta0_1 = [2.9957; 0];
 beta0_2 = [0.0513; 0];
 
+br11_prev = beta0_1(1); br12_prev = beta0_1(2);
+br21_prev = beta0_2(1); br22_prev = beta0_2(2);
+
 %% begin iteration
 
 % closing in on this bitch
@@ -138,8 +143,12 @@ Varray = cell(1);
 EVarray = cell(1);
 Garray = cell(1);
 Kforearray = cell(1);
+Kmeans = cell(1);
+Kstds = cell(1);
 Rforearray = cell(1);
 nlms = cell(1,2,2);
+
+
 
 terms.starter_distr = g1;
 
@@ -236,43 +245,74 @@ while foredist > vTol
     % not big enough to get regression coefficients that work. 
     % (R_t,d_t) = (1,1)
     if sum(ix11) > 10
-        X1    = K_curr(ix11)*100000;
+        Kmean = mean(K_curr(ix11));
+        Kstd = std(K_curr(ix11));
+        X1 = (K_curr(ix11) - Kmean) / Kstd;
+
+        Kmeans(1,1) = Kmean; Kstds(1,1) = Kstd;
+
         Y1    = Y(ix11);
-        nlm11 = fitnlm(X1, Y1, mymodelfun, beta0_1, 'Options', opts);
+        nlm11 = fitnlm(X1, Y1, mymodelfun, br11_prev, 'Options', opts);
         br11  = nlm11.Coefficients.Estimate;   % [beta0; beta1]
+        br11_prev = br11;
     end
+    %preventing degenerate coeff when there's a low number of obs
+    if any(abs(br11) > 20), br11 = br11_prev; end 
+
     
     % (1,2)
     if sum(ix12) > 10
-        X2    = K_curr(ix12)*100000;
+        Kmean = mean(K_curr(ix12));
+        Kstd = std(K_curr(ix12));
+        X2 = (K_curr(ix12) - Kmean) / Kstd;
+
+        Kmeans(1,2) = Kmean; Kstds(1,2) = Kstd;
+        
         Y2    = Y(ix12);
-        nlm12 = fitnlm(X2, Y2, mymodelfun, beta0_1, 'Options', opts);
+        nlm12 = fitnlm(X2, Y2, mymodelfun, br12_prev, 'Options', opts);
         br12  = nlm12.Coefficients.Estimate;
+        br12_prev = br12;
     end
-    
+    if any(abs(br12) > 20), br12 = br12_prev; end
+
     % (2,1)
     if sum(ix21) > 10
-        X3    = K_curr(ix21)*100000;
+        Kmean = mean(K_curr(ix21));
+        Kstd = std(K_curr(ix21));
+        X3 = (K_curr(ix21) - Kmean) / Kstd;
+
+        Kmeans(2,1) = Kmean; Kstds(2,1) = Kstd;
         Y3    = Y(ix21);
-        nlm21 = fitnlm(X3, Y3, mymodelfun, beta0_2, 'Options', opts);
+        nlm21 = fitnlm(X3, Y3, mymodelfun, br21_prev, 'Options', opts);
         br21  = nlm21.Coefficients.Estimate;
+        br21_prev = br21;
     end
-    
+    if any(abs(br21) > 20), br21 = br21_prev; end
+
     % (2,2)
     if sum(ix22) > 10
-        X4    = K_curr(ix22)*100000;
+        Kmean = mean(K_curr(ix22));
+        Kstd = std(K_curr(ix22));
+        X4 = (K_curr(ix22) - Kmean) / Kstd;
+
+        Kmeans(2,2) = Kmean; Kstds(2,2) = Kstd;
         Y4    = Y(ix22);
-        nlm22 = fitnlm(X4, Y4, mymodelfun, beta0_2, 'Options', opts);
+        nlm22 = fitnlm(X4, Y4, mymodelfun, br22_prev, 'Options', opts);
         br22  = nlm22.Coefficients.Estimate;
+        br22_prev = br22;
     end
+    if any(abs(br22) > 20), br22 = br22_prev; end
+
+    terms.Kmeans = Kmeans;
+    terms.Kstds = Kstds;
 
     Rfore1 = [br11'; br21'];
     Rfore2 = [br12'; br22'];
     Rfore_new(1,:,:) = Rfore1; Rfore_new(2,:,:) = Rfore2;
-    Rfore_new(:,:,2) = Rfore_new(:,:,2)*100000; % rescale back 2 normal
+    Rfore = 0.8*Rfore + 0.2*Rfore_new;
+
 
     % Update R forecast
-    Rfore = Rfore_new;
     terms.Rfore = Rfore;
 
     testK = linspace(min(K_curr), max(K_curr), nk);
