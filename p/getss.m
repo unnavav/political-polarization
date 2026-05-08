@@ -21,7 +21,7 @@ addpath(genpath(pwd));
 
 %% params
 vTol = 1e-5; dTol = 1e-2;
-alpha = 0.36; delta = 0.04; beta = 0.96; sigma = 3; 
+alpha = 0.36; delta = 0.04; beta = 0.96; sigma = 2; 
 neta = 5;
 ntau = 5;
 nl = 7;
@@ -30,7 +30,7 @@ nmu = na*10;
 np = 2;
 nd = 2;
 
-al = 0; ah = 100;
+al = 0; ah = 50;
 
 % initial r guess: 
 r = 0.04;
@@ -84,10 +84,10 @@ end
 % delta shock grid
 dgrid = [0.04 0.08];
 pid = [.94 0.06;
-    .5 .5]; %totally made this up
+    .9 .1]; %totally made this up
 
-etagrid = linspace(.0,.45,neta);
-taugrid = linspace(.0,.45,ntau);
+etagrid = linspace(.0,.10,neta);
+taugrid = linspace(.09,.19,ntau);
 % captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
 % captax = linspace(0, .20, nl);
@@ -153,7 +153,7 @@ for i = 1:neta
         terms.tau = taugrid(j);
         fprintf("Migration Rate: %0.4f, Progressivity: %0.4f\n", eta, terms.tau);
 
-        kl = 0;
+        kl = 5;
         kh = 20;
         kval = (kl + kh)/2;
         kDist = 10;
@@ -173,7 +173,7 @@ for i = 1:neta
                 phi = 0;
             end
 
-            terms.phi  = phi;
+            terms.phi  = 0; %terms.phi = phi when there's a bc, right now not playing that game 
     
             % we have to get the value of lambda such that taxation 
             % is redistributing everything. aka BB
@@ -293,26 +293,68 @@ for i = 1:neta
             kval = .5*(kl + kh);
         end
     
-        acond = compute.condense(Warray{i,j}, amu, agrid);
-        if i > 1
-            Votes_Pop = EVarray{i,j} > EVarray{i,1};
-            p = Votes_Pop.*acond;
-            ev_diff = EVarray{i,j} - EVarray{1,j};
-            meanEV_diffs(i,j) = mean(ev_diff(:));
-            stdEV_diffs(i,j)  = std(ev_diff(:));
-            maxEV_diffs(i,j)  = max(ev_diff(:));
-            minEV_diffs(i,j)  = min(ev_diff(:));
-        else
-            p = zeros(size(acond));
-        end
-
-        parray{i,j} = sum(sum(sum(p)));
-        fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
-     
-        filename = strcat(todayDateStr, "_borrowing_lim_results_rho90sig3.mat");
+        filename = strcat(todayDateStr, "_etatest_results_rho90sig2.mat");
         save(filename)
 
     end
 end 
+
+%populist voting
+parray = zeros(neta,ntau);
+% choose the ss to compare against
+popi = 1; popj = 5;  % eta=0, tau=0.19
+libi = 3; libj = 1;  % eta=0.05, tau=0.09
+
+for i = 1:neta
+    for j = 1:ntau
+    Votes_Pop = EVarray{popi,popj} > EVarray{libi,libj};
+    acond = compute.condense(Warray{i,j}, amu, agrid); 
+    p = Votes_Pop.*acond;
+    % ev_diff = EVarray{i,j} - EVarray{1,j};
+    % meanEV_diffs(i,j) = mean(ev_diff(:));
+    % stdEV_diffs(i,j)  = std(ev_diff(:));
+    % maxEV_diffs(i,j)  = max(ev_diff(:));
+    % minEV_diffs(i,j)  = min(ev_diff(:));
+    
+    parray(i,j) = sum(sum(sum(p)));
+    fprintf('Eta = %.2f; Tau = %.2f\n', etagrid(i), taugrid(j))
+    fprintf('\tVote share for populism at populist SS: %.4f\n', parray(popi,popj))
+    fprintf('\tVote share for populism at liberal SS: %.4f\n', parray(libi,libj))
+
+    % fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
+    end
+end
+parray
+
+
+popi = 1; popj = 3;  % eta=0, tau=0.19 — populist candidate
+libi = 5; libj = 2;  % eta=0.05, tau=0.09 — liberal candidate
+
+% At each SS distribution, share preferring populist over liberal
+parray_switch_to_pop = zeros(neta, ntau);
+% At each SS distribution, share preferring liberal over populist  
+parray_switch_to_lib = zeros(neta, ntau);
+
+for i = 1:neta
+    for j = 1:ntau
+        acond = compute.condense(Warray{i,j}, amu, agrid);
+
+        % Who prefers populist platform
+        Votes_Pop = EVarray{popi,popj} > EVarray{libi,libj};
+        parray_switch_to_pop(i,j) = sum(sum(sum(Votes_Pop.*acond)));
+
+        % Who prefers liberal platform
+        Votes_Lib = EVarray{libi,libj} > EVarray{popi,popj};
+        parray_switch_to_lib(i,j) = sum(sum(sum(Votes_Lib.*acond)));
+    end
+end
+
+fprintf('Populist SS — share preferring populist: %.4f\n', parray_switch_to_pop(popi,popj))
+fprintf('Populist SS — share preferring liberal: %.4f\n', parray_switch_to_lib(popi,popj))
+fprintf('Liberal SS — share preferring populist: %.4f\n', parray_switch_to_pop(libi,libj))
+fprintf('Liberal SS — share preferring liberal: %.4f\n', parray_switch_to_lib(libi,libj))
+
+filename = strcat(todayDateStr, "_etatest_results_rho90sig2.mat");
+save(filename)
 
 cd ../../p/

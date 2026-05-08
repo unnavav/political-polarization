@@ -16,14 +16,14 @@ addpath(genpath(pwd));
 %% pulling in steady states of interest and relevant policies
 
 cd ../d/steadystates/
-load 20260323_persistdelta_results_rho90sig3.mat
+load 20260417_etatest_results_rho90sig2.mat
 
 clearvars -except Warray Karray etagrid taugrid captax dgrid pid parray
 
-g1 = Warray{1,3}; g2 = Warray{3,2};
-K_ss_pop = Karray{1,3}; K_ss_lib = Karray{3,2};
+g1 = Warray{1,3}; g2 = Warray{4,2};
+K_ss_pop = Karray{1,3}; K_ss_lib = Karray{4,2};
 
-etap = etagrid(1); etal = etagrid(3);
+etap = etagrid(1); etal = etagrid(4);
 taup = taugrid(3); taul = taugrid(2);
 
 taugrid = [taup taul]; etagrid = [etap etal];
@@ -152,7 +152,7 @@ nlms = cell(1,2,2);
 
 
 
-terms.starter_distr = g1;
+terms.starter_distr = g2;
 
 % Get today's date as a datetime object
 t = datetime('today');
@@ -160,7 +160,7 @@ t = datetime('today');
 % Convert the datetime object to a string with the specified format
 todayDateStr = string(t, 'yyyyMMdd');
 
-filename = strcat('ks_rfore_endo_all_',todayDateStr ,'.mat');
+filename = strcat('ks_rfore_endo_all_',todayDateStr ,'2.mat');
 
 while foredist > vTol
 
@@ -309,18 +309,18 @@ while foredist > vTol
     terms.Kstds = Kstds;
     Kmeansarray{iter_ct} = Kmeans; Kstdsarray{iter_ct} = Kstds;
 
+
     Rfore1 = [br11'; br21'];
     Rfore2 = [br12'; br22'];
+    p_old = ks.forecastR(Rfore,Kgrid,Kmeans, Kstds);
     Rfore_new(1,:,:) = Rfore1; Rfore_new(2,:,:) = Rfore2;
     Rfore = 0.8*Rfore + 0.2*Rfore_new;
-
+    p_new = ks.forecastR(Rfore_new,Kgrid, Kmeans, Kstds);
 
     % Update R forecast
     terms.Rfore = Rfore;
 
     testK = linspace(min(K_curr), max(K_curr), nk);
-    p_old = ks.forecastR(Rfore,testK,Kmeans, Kstds);
-    p_new = ks.forecastR(Rfore_new,testK, Kmeans, Kstds);
     foredist = compute.dist(p_new, p_old, 3);
     nlms{iter_ct, 1, 1} = nlm11; nlms{iter_ct, 1, 2} = nlm11;
     nlms{iter_ct, 2, 1} = nlm21; nlms{iter_ct, 2, 2} = nlm22;
@@ -329,34 +329,39 @@ while foredist > vTol
     fprintf('K range: [%0.4f, %0.4f]\n', min(Kprdat), max(Kprdat));
 
     figure;
-
-    % 1) Three-panel plot
-    subplot(2,1,1);
-    plot(Prdata,'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
-    yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);  % majority threshold
+        
+    set(groot, 'defaultTextInterpreter', 'latex')
+    set(groot, 'defaultAxesTickLabelInterpreter', 'latex')
+    set(groot, 'defaultLegendInterpreter', 'latex')
+% 1) Three-panel plot
+    subplot(3,1,1);
+    plot(Prdata(1500:2000),'LineWidth',1.6,'Color',[0.80 0.20 0.20]);
+    yline(0.5,'--','Color',[0.4 0.4 0.4],'LineWidth',1);
     xlabel('Time');
     ylabel('P(populism)');
     title('Probability of Voting for Populism');
-    ylim([0 1]);
+    xlim([0 500]);
     grid on;
-    set(gca,'FontSize',12);
-
-    subplot(2,1,2);
-    plot(Kprdat,'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
+    set(gca,'FontSize',18);
+    
+    subplot(3,1,2);
+    plot(Kprdat(1500:2000),'LineWidth',1.6,'Color',[0.20 0.30 0.75]);
     xlabel('Time');
-    ylabel('Aggregate Capital K');
+    ylabel('Aggregate Capital $K$', 'Interpreter', 'latex');
     title('Aggregate Capital Path');
+    xlim([0 500]);
     grid on;
-    set(gca,'FontSize',12);
-
+    set(gca,'FontSize',18);
+    
     subplot(3,1,3);
-    plot(ddata,'LineWidth',1.6,'Color',[0.5 0.25 0.42]);
+    plot(ddata(1500:2000),'LineWidth',1.6,'Color',[0.5 0.25 0.42]);
     xlabel('Time');
-    ylabel('Delta Shocks');
-    title('Aggregate Capital Path');
+    ylabel('$\delta$', 'Interpreter', 'latex');
+    title('Capital Depreciation Shock');
+    xlim([0 500]);
     grid on;
-    set(gca,'FontSize',12);
-
+    set(gca,'FontSize',18);
+    
 % Kfore_new and Rfore_new are 4×2: [a  b]
 % rows: (R,d) = (1,1),(1,2),(2,1),(2,2)
 
