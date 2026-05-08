@@ -16,7 +16,7 @@ classdef egm
             beta = pol_terms.beta;
             sigma = pol_terms.sigma;
 
-            phi = 1;
+            phi = pol_terms.phi;
 
             endoK = zeros(size(V));
             TV = endoK;
@@ -29,8 +29,8 @@ classdef egm
                     c = (beta*D(il, ia))^(-1/sigma);
                     y = gov.tax(w*l, lamval, tau);
                     
-                    numerator = c + kpr - y;
-                    denom = (1+r*(1-captax(il))); % TODO: check phi in right place
+                    numerator = c + kpr - y + r*(1-captax(il))*phi;
+                    denom = (1+r*(1-captax(il))); 
 
                     impliedK = numerator/denom;
 
@@ -65,7 +65,8 @@ classdef egm
                     l = lgrid(il);
 
                     c = (1 + r*(1 - captax(il))) * agrid(ia) ...
-                        + gov.tax(w*l, lamval, tau) - G(il, ia);
+                        + gov.tax(w*l, lamval, tau) - G(il, ia) ...
+                        - r*(1 - captax(il))*phi;
 
                     C(il, ia) = max(1e-6, c);
 

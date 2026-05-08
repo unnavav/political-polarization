@@ -156,14 +156,100 @@ classdef HH
         % e.g. 25% of HH a's have savings of 100 under party A, but
         % only 50% of HH are party a, so in actuality only 12.5% of
         % distr is at 100. 
-        function [mu1, kagg] = getDist(G, amu, agrid, pil, verbose)
+        function [mu1, kagg] = getDist(G, amu, agrid, pil, pid, phi, verbose)
 
-            [nl, ~] = size(G);
+            [nd, nl, ~] = size(G);
             nmu = length(amu);
-            mu = zeros(nl, nmu);
+            mu = zeros(nd, nl, nmu);
 
             %nomenclature: ixagrid is indices for HH a for both parties.
             ixgrid = zeros(size(G)); wegrid = ixgrid;
+          
+            % We linearly interpolate the policy function on agrid to compute
+            % afval on the distribution support.
+            for id = 1:nd
+                for im = 1:nmu
+                    kval = amu(im);
+                    for il = 1:nl  
+                        [ix, we] = compute.weight(agrid, kval);
+                            
+                        %split between rep and dem capital choices
+                        kdval = G(id,il,ix)*we + G(id,il,ix+1)*(1.0 - we);
+    
+                        [ix, we] = compute.weight(amu, kdval);
+                        ixgrid(id, il, im) = ix;
+                        wegrid(id, il, im) = we;
+                    end
+                end
+            end
+            
+            distance = 20; iter_ct = 1;
+            
+            % nomenclature: muA is the distribution over assets when A is 
+            % in power
+            mu = ones(size(mu))*(1/(nd*nmu*nl));
+
+            while (distance > 1e-6)
+                
+                mu1 = zeros(size(mu));
+                
+                for id = 1:nd
+                    for im = 1:nmu
+                        for il = 1:nl
+                            
+                            %need weighting for a and b HH under party A
+                            ix = ixgrid(id, il,im); we = wegrid(id, il,im); 
+                            muval = mu(id, il, im); 
+                            
+                            if muval > 0
+                                for jl = 1:nl
+    
+                                    %a households' movements
+                                    if (ix < nmu)
+                                        mu_val1 = pil(il,jl)*muval*we;
+                                        mu_val2 = pil(il,jl)*muval*(1.0 - we);
+                                    else
+                                        mu_val1 = pil(il,jl)*muval*we;
+                                        mu_val2 = 0;
+                                    end
+    
+                                    mu1(id, jl,ix) = mu1(id, jl,ix) + mu_val1;
+                                    mu1(id, jl,ix+1) = mu1(id, jl,ix+1) + mu_val2;
+                                end
+                            end
+                        end
+                    end
+                end
+                                
+                distance = compute.dist(mu1, mu, 3);
+
+%                 if (mod(iter_ct,50) == 0)
+%                     s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
+%                         iter_ct, distance, sum(sum(mu1)));
+%                     disp(s)
+%                 end
+                
+                iter_ct = iter_ct + 1;
+            
+                mu = mu1;   
+            end
+            s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
+                iter_ct, distance, sum(sum(sum(mu))));
+            if verbose
+                disp(s);
+            end 
+            
+            distrA2500 = squeeze(sum(sum(mu,2),1));
+            kagg = (amu - phi)*distrA2500;
+        end
+
+        function [mu1, kagg] = transitDistr(g_t, mu_prev, amu, agrid, phi, pil)
+
+            [nl, ~] = size(g_t);
+            [nd,~, nmu] = size(mu_prev);
+
+            %nomenclature: ixagrid is indices for HH a for both parties.
+            ixgrid = zeros(size(g_t)); wegrid = ixgrid;
           
             % We linearly interpolate the policy function on agrid to compute
             % afval on the distribution support.
@@ -173,30 +259,25 @@ classdef HH
                     [ix, we] = compute.weight(agrid, kval);
                         
                     %split between rep and dem capital choices
-                    kdval = G(il,ix)*we + G(il,ix+1)*(1.0 - we);
+                    kdval = g_t(il,ix)*we + g_t(il,ix+1)*(1.0 - we);
 
+                    kdval = min(max(kdval, amu(1)), amu(end));
                     [ix, we] = compute.weight(amu, kdval);
                     ixgrid(il, im) = ix;
                     wegrid(il, im) = we;
                 end
             end
-            
-            distance = 20; iter_ct = 1;
-            
-            % nomenclature: muA is the distribution over assets when A is 
-            % in power
-            mu = ones(size(mu))*(1/(nmu*nl));
+                
 
-            while (distance > 1e-6 && iter_ct < 3000)
+            mu1 = zeros(size(mu_prev));
                 
-                mu1 = zeros(size(mu));
-                
+            for id = 1:nd
                 for im = 1:nmu
                     for il = 1:nl
                         
                         %need weighting for a and b HH under party A
                         ix = ixgrid(il,im); we = wegrid(il,im); 
-                        muval = mu(il, im); 
+                        muval = mu_prev(id, il, im); 
                         
                         if muval > 0
                             for jl = 1:nl
@@ -210,90 +291,16 @@ classdef HH
                                     mu_val2 = 0;
                                 end
 
-                                mu1(jl,ix) = mu1(jl,ix) + mu_val1;
-                                mu1(jl,ix+1) = mu1(jl,ix+1) + mu_val2;
+                                mu1(id, jl,ix) = mu1(id, jl,ix) + mu_val1;
+                                mu1(id, jl,ix+1) = mu1(id, jl,ix+1) + mu_val2;
                             end
-                        end
-                    end
-                end
-                                
-                distance = compute.dist(mu1, mu, 2);
-
-%                 if (mod(iter_ct,50) == 0)
-%                     s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-%                         iter_ct, distance, sum(sum(mu1)));
-%                     disp(s)
-%                 end
-                
-                iter_ct = iter_ct + 1;
-            
-                mu = mu1;   
-            end
-            s = sprintf( '\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f ', ...
-                iter_ct, distance, sum(sum(mu)));
-            if verbose
-                disp(s);
-            end 
-            
-            distrA2500 = sum(mu,1);
-            kagg = amu*distrA2500';
-        end
-
-        function [mu1, kagg] = transitDistr(G, mu, amu, agrid, pil)
-
-            [nl, ~] = size(G);
-            [~, nmu] = size(amu);
-
-            %nomenclature: ixagrid is indices for HH a for both parties.
-            ixgrid = zeros(size(G)); wegrid = ixgrid;
-          
-            % We linearly interpolate the policy function on agrid to compute
-            % afval on the distribution support.
-            for im = 1:nmu
-                kval = amu(im);
-                for il = 1:nl  
-                    [ix, we] = compute.weight(agrid, kval);
-                        
-                    %split between rep and dem capital choices
-                    kdval = G(il,ix)*we + G(il,ix+1)*(1.0 - we);
-
-                    kdval = min(max(kdval, amu(1)), amu(end));
-                    [ix, we] = compute.weight(amu, kdval);
-                    ixgrid(il, im) = ix;
-                    wegrid(il, im) = we;
-                end
-            end
-                
-
-            mu1 = zeros(size(mu));
-            
-            for im = 1:nmu
-                for il = 1:nl
-                    
-                    ix = ixgrid(il,im); we = wegrid(il,im); 
-                    muval = mu(il, im); 
-                    
-                    if muval > 0
-                        for jl = 1:nl
-
-                            %a households' movements
-                            if (ix < nmu)
-                                mu_val1 = pil(il,jl)*muval*we;
-                                mu_val2 = pil(il,jl)*muval*(1.0 - we);
-                            else
-                                mu_val1 = pil(il,jl)*muval*we;
-                                mu_val2 = 0;
-                            end
-
-                            mu1(jl,ix) = mu1(jl,ix) + mu_val1;
-                            mu1(jl,ix+1) = mu1(jl,ix+1) + mu_val2;
                         end
                     end
                 end
             end
                               
-            distrA2500 = sum(mu,1);
-            kagg = amu*distrA2500';
+            distrA2500 = squeeze(sum(sum(mu1,1),2));
+            kagg = dot((amu - phi),distrA2500);
         end
 
         function [vdistr, winner] = map(VOTES, amu, agrid, adistr, pctDem)

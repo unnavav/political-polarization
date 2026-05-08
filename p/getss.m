@@ -14,7 +14,6 @@
 
 restoredefaultpath;
 clear all; clc;
-cd ..
 addpath(genpath(pwd));
 
 % first set up some grids, pulling a lot from aiyagari
@@ -22,16 +21,16 @@ addpath(genpath(pwd));
 
 %% params
 vTol = 1e-5; dTol = 1e-2;
-alpha = 0.36; delta = 0.06; beta = 0.96; sigma = 3; phi = 0;
-
-neta = 20;
-ntau = 20;
+alpha = 0.36; delta = 0.04; beta = 0.96; sigma = 2; 
+neta = 5;
+ntau = 5;
 nl = 7;
 na = 100;
 nmu = na*10;
 np = 2;
+nd = 2;
 
-al = 0+phi; ah = 50+phi;
+al = 0; ah = 50;
 
 % initial r guess: 
 r = 0.04;
@@ -82,8 +81,13 @@ for im = 1:nmu
     end 
 end
 
-etagrid = linspace(.0,.9,neta);
-taugrid = linspace(.0,.9,ntau);
+% delta shock grid
+dgrid = [0.04 0.08];
+pid = [.94 0.06;
+    .9 .1]; %totally made this up
+
+etagrid = linspace(.0,.10,neta);
+taugrid = linspace(.09,.19,ntau);
 % captax = [repelem(0, ceil(nl/2)) repelem(.15, floor(nl/2))]; %IRS
 % captax = compute.logspace(0, 20, nl)/100;
 % captax = linspace(0, .20, nl);
@@ -115,15 +119,14 @@ minEV_diffs = zeros(neta, ntau);
 
 %% migration ss's
 
-TV = zeros(nl, na);
+TV = zeros(nd, nl, na);
 TG = TV; V= TV;
 
-EV = zeros(nl, na);
+EV = zeros(nd, nl, na);
 
 %prepare for VFI
 terms = struct('beta', beta, ...
     'sigma', sigma, ...
-    'phi', phi, ...
     'agrid', agrid, ...
     'lgrid', lgrid, ...
     'pil', pil, ...
@@ -134,7 +137,15 @@ mkdir("../d/",folname)
 newdir = strcat("../d/", folname);
 cd(newdir)
 
-for i = 4:neta
+
+% Get today's date as a datetime object
+t = datetime('today');
+
+% Convert the datetime object to a string with the specified format
+todayDateStr = string(t, 'yyyyMMdd');
+
+
+for i = 1:neta
     eta = etagrid(i);
 
     for j = 1:ntau
@@ -142,8 +153,8 @@ for i = 4:neta
         terms.tau = taugrid(j);
         fprintf("Migration Rate: %0.4f, Progressivity: %0.4f\n", eta, terms.tau);
 
-        kl = 0;
-        kh = 15;
+        kl = 5;
+        kh = 20;
         kval = (kl + kh)/2;
         kDist = 10;
         while kDist > dTol
@@ -152,8 +163,17 @@ for i = 4:neta
             fprintf("\nA guess: %4.8f. Begin iteration for solution...\n", kval)
             fprintf("\t Solving value function:\n")
     
-            terms.r = vaas.calcr(alpha, delta, kval, eta);
+            rgrid = vaas.calcr(alpha, dgrid, kval, eta);
+            terms.r = rgrid(1); % just an initialization value
             terms.w = vaas.calcw(alpha, kval, eta);
+            if terms.r > 0
+                %10 pct of natural borrowing limit
+                phi = 0.1*(terms.w*min(lgrid))/terms.r;
+            else
+                phi = 0;
+            end
+
+            terms.phi  = 0; %terms.phi = phi when there's a bc, right now not playing that game 
     
             % we have to get the value of lambda such that taxation 
             % is redistributing everything. aka BB
@@ -164,43 +184,57 @@ for i = 4:neta
             terms.lamval = tot_inc/denom;
     
             iter_ct = 1;
-            dist = 10;
-            G = zeros(nl,na);
+            dist = 10; kdist = 10;
+            G = zeros(nd, nl,na);
     
             % set up V so that it doesn't start empty
             scale = 1;
-            for ia = 1:na
-                k_val = agrid(ia);
-                for il = 1:nl
-                    yval = scale*(1+terms.r)*k_val + terms.w*lgrid(il) - r*phi;
-                    ymin = max(1e-10, yval);
-                    V(il, ia) = log(ymin);
+            for id = 1:nd
+                for ia = 1:na
+                    k_val = agrid(ia);
+                    for il = 1:nl
+                        yval = scale*(1+terms.r)*k_val + ...
+                            terms.w*lgrid(il) - r*terms.phi;
+                        ymin = max(1e-10, yval);
+                        V(id,il, ia) = log(ymin);
+                    end
                 end
             end
             
             %init expected vals
-            for ia = 1:na
-                for il = 1:nl
-                    EV(il, ia) = pil(il,:)*V(:,ia);
+            for id = 1:nd
+                for ia = 1:na
+                    for il = 1:nl
+                        EV(id,il, ia) = pid(id,1)*dot(pil(il,:),V(1,:,ia)) + ...
+                            (1-pid(id,1))*dot(pil(il,:),V(2,:,ia));
+                    end
                 end
             end
     
-            while dist > vTol
+            while kdist > vTol
                 
-                for ia = 1:na
-                    for il = 1:nl
-                        EV(il, ia) = pil(il,:)*V(:,ia);
+                for id = 1:nd
+                    for ia = 1:na
+                        for il = 1:nl
+                            EV(id,il, ia) = pid(id,1)*dot(pil(il,:),V(1,:,ia)) + ...
+                                (1-pid(id,1))*dot(pil(il,:),V(2,:,ia));
+                        end
                     end
                 end
                 % now converging on the value function and decision rule
                 % for every capital-regime combo (EGM bc this is 50
                 % convergences)
-
-                [TV, TG]= egm.solve(terms, EV, V);
+                for id = 1:nd
+                    terms.r = rgrid(id);
+                    dV = squeeze(V(id, :,  :));
+                    dEV = squeeze(EV(id, :,  :));
+                    [TVd, TGd]= egm.solve(terms, dEV, dV);
+                    TV(id,:,:) = TVd; TG(id,:,:) = TGd;
+                end
 
                 % check distance
-                dist = compute.dist(V, TV, 2);
-                kdist = compute.dist(G, TG, 2);
+                dist = compute.dist(V, TV, 3);
+                kdist = compute.dist(G, TG, 3);
             
                 if mod(iter_ct, 250) == 0
                     fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
@@ -226,12 +260,17 @@ for i = 4:neta
             end  
             fprintf("\n\tIteration %i: \n\t\t||TV - V|| = %4.6f" + ...
                 "\n\t\t||TG - G|| = %4.6f", iter_ct, dist, kdist);
+            diff = TV - V;
+            fprintf('\n\t\tMin diff: %4.6f, Max diff: %4.6f', min(diff(:)), max(diff(:)));
+            fprintf('\n\t\tMean diff: %4.6f, Std diff: %4.6f', mean(diff(:)), std(diff(:)));
+
             Varray{i,j}= V;
             Garray{i,j} = G;
             EVarray{i,j} = EV; 
     
+            
             [Warray{i,j}, Karray{i,j}] = HH.getDist(Garray{i,j}, amu, agrid, ...
-                pil, false);      
+                pil, pid, phi, false);      
         
             kdist = Karray{i,j} - kval;
         
@@ -254,26 +293,68 @@ for i = 4:neta
             kval = .5*(kl + kh);
         end
     
-        acond = compute.condense(Warray{i,j}, amu, agrid);
-        if i > 1
-            Votes_Pop = EVarray{i,j} > EVarray{i,1};
-            p = Votes_Pop.*acond;
-            ev_diff = EVarray{i,j} - EVarray{1,j};
-            meanEV_diffs(i,j) = mean(ev_diff(:));
-            stdEV_diffs(i,j)  = std(ev_diff(:));
-            maxEV_diffs(i,j)  = max(ev_diff(:));
-            minEV_diffs(i,j)  = min(ev_diff(:));
-        else
-            p = zeros(size(acond));
-        end
-
-        parray{i,j} = sum(sum(p));
-        fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
-
-        filename = strcat("results_rho90sig3_t",sprintf('%0.4f', taugrid(j)),"_eta", sprintf('%0.4f', etagrid(i)), ".mat");
+        filename = strcat(todayDateStr, "_etatest_results_rho90sig2.mat");
         save(filename)
 
     end
 end 
+
+%populist voting
+parray = zeros(neta,ntau);
+% choose the ss to compare against
+popi = 1; popj = 5;  % eta=0, tau=0.19
+libi = 3; libj = 1;  % eta=0.05, tau=0.09
+
+for i = 1:neta
+    for j = 1:ntau
+    Votes_Pop = EVarray{popi,popj} > EVarray{libi,libj};
+    acond = compute.condense(Warray{i,j}, amu, agrid); 
+    p = Votes_Pop.*acond;
+    % ev_diff = EVarray{i,j} - EVarray{1,j};
+    % meanEV_diffs(i,j) = mean(ev_diff(:));
+    % stdEV_diffs(i,j)  = std(ev_diff(:));
+    % maxEV_diffs(i,j)  = max(ev_diff(:));
+    % minEV_diffs(i,j)  = min(ev_diff(:));
+    
+    parray(i,j) = sum(sum(sum(p)));
+    fprintf('Eta = %.2f; Tau = %.2f\n', etagrid(i), taugrid(j))
+    fprintf('\tVote share for populism at populist SS: %.4f\n', parray(popi,popj))
+    fprintf('\tVote share for populism at liberal SS: %.4f\n', parray(libi,libj))
+
+    % fprintf("Percentage Voting for Populists: %0.2f\n", parray{i,j});
+    end
+end
+parray
+
+
+popi = 1; popj = 3;  % eta=0, tau=0.19 — populist candidate
+libi = 5; libj = 2;  % eta=0.05, tau=0.09 — liberal candidate
+
+% At each SS distribution, share preferring populist over liberal
+parray_switch_to_pop = zeros(neta, ntau);
+% At each SS distribution, share preferring liberal over populist  
+parray_switch_to_lib = zeros(neta, ntau);
+
+for i = 1:neta
+    for j = 1:ntau
+        acond = compute.condense(Warray{i,j}, amu, agrid);
+
+        % Who prefers populist platform
+        Votes_Pop = EVarray{popi,popj} > EVarray{libi,libj};
+        parray_switch_to_pop(i,j) = sum(sum(sum(Votes_Pop.*acond)));
+
+        % Who prefers liberal platform
+        Votes_Lib = EVarray{libi,libj} > EVarray{popi,popj};
+        parray_switch_to_lib(i,j) = sum(sum(sum(Votes_Lib.*acond)));
+    end
+end
+
+fprintf('Populist SS — share preferring populist: %.4f\n', parray_switch_to_pop(popi,popj))
+fprintf('Populist SS — share preferring liberal: %.4f\n', parray_switch_to_lib(popi,popj))
+fprintf('Liberal SS — share preferring populist: %.4f\n', parray_switch_to_pop(libi,libj))
+fprintf('Liberal SS — share preferring liberal: %.4f\n', parray_switch_to_lib(libi,libj))
+
+filename = strcat(todayDateStr, "_etatest_results_rho90sig2.mat");
+save(filename)
 
 cd ../../p/
