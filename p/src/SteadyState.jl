@@ -73,7 +73,7 @@ function solveHousehold(model::ModelParams, policies::ProposedPolicies, kval, vT
 		end
 	end
 
-	print("Solving Household Problem...")
+	print("Solving Household Problem...\n")
 
 	vdist::Float64 = 10;
 	iter_ct = 1;
@@ -95,18 +95,19 @@ function solveHousehold(model::ModelParams, policies::ProposedPolicies, kval, vT
 
 		V, G, C = solve(EV, model, policies, prices, CI)
 
-		vdist = max(supnorm(V,V0,3), supnorm(G,G0,3));
-
-		V0 .= .5*V + .5*V0; G0 .= .5*G + .5*G0;
-		
-		if iter_ct % 50 == 0
-			@printf("Iteration %i: ||V - V0|| = %1.6f, ||G - G0|| = %1.6f, dist = %1.6f\n", 
+		vdist = max(supnorm(V, V0, 3), supnorm(G, G0, 3))
+		if iter_ct % 200 == 0
+			@printf("\tIteration %i: ||V - V0|| = %1.6f, ||G - G0|| = %1.6f, dist = %1.6f\n", 
 			iter_ct, supnorm(V,V0,3), supnorm(G,G0,3), vdist)
 		end
+		
+		V0 .= V
+		G0 .= G
+	
 		iter_ct += 1;
 	end
 
-	@printf("Iteration %i: ||V - V0|| = %1.6f, ||G - G0|| = %1.6f, dist = %1.6f\n", 
+	@printf("\tIteration %i: ||V - V0|| = %1.6f, ||G - G0|| = %1.6f, dist = %1.6f\n", 
 				iter_ct, supnorm(V,V0,3), supnorm(G,G0,3), vdist)
 	
 	return V, G, C, CI, LI

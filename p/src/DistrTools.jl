@@ -12,7 +12,8 @@ function getDistr(G::Array{Float64,3}, amu::Vector{Float64}, agrid::Vector{Float
                  π_l::Matrix{Float64}, π_z::Matrix{Float64},
                  CI::CartesianIndices{2, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}},
                  LI::LinearIndices{2, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}},
-                 ϕ::Float64; verbose::Bool=false)
+                 ϕ::Float64; verbose::Bool=false,
+                 vTol::Float64=1e-6)
 
     nt, nl, _ = size(G)
     nmu = length(amu)
@@ -39,7 +40,7 @@ function getDistr(G::Array{Float64,3}, amu::Vector{Float64}, agrid::Vector{Float
     distance = 20.0
     iter_ct = 1
 
-    while distance > 1e-6
+    while distance > vTol
         μ1 = zeros(nt, nl, nmu)
 
         for it in 1:nt, im in 1:nmu, il in 1:nl
@@ -71,7 +72,7 @@ function getDistr(G::Array{Float64,3}, amu::Vector{Float64}, agrid::Vector{Float
     end
 
     if verbose
-        @printf("\n\t\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f\n",
+        @printf("\n\tIteration %3i: ||Tm - m|| = %8.6f\tsum = %6.4f\n",
                 iter_ct, distance, sum(μ))
     end
 
