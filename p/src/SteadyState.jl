@@ -19,18 +19,21 @@ function solveHousehold(model::ModelParams, policies::ProposedPolicies, kval, vT
 	agrid = model.agrid;
 	zgrid = model.zgrid;
 
-	# The cartesian index is the location, whereas the linear index is the one-dimensional 
-	# version that determines whether we transition and from which state we do. So we have:
-	#  - CI[i,j] = (i,j) is the cartesian index of the state (z_i, l_j)
-	#  - LI[i,j] = k is the linear index of the state (z_i, l_j), 
-	# 		which determines the transition probabilities. 
-	# Because I'm interested in the combination of yesterday's TFP and today's TFP as a 
-	# state variable, I need to use the cartesian index to determine the transition probabilities. 
-	# The mapping for this is below. I am writing a long explanation here for my own sake. 
+	# turns out I had this all wrong, so inputting the updated part
+	# π_z is nz×nz over (yesterday's z, today's z). We track the *pair*
+	# (z₋₁, z₀) as the aggregate state, so each household state carries a
+	# transition index it ∈ 1:nt, nt = nz².
 	#
-	# This means (1,1) maps to 1 in the linear index, (1,2) maps to 2, (2,1) maps to 3, and 
-	# (2,2) maps to 4, if nz = 2. Mapping back gives us:
-	# 
+	# CI = CartesianIndices(π_z):  CI[it] = (i, j) = (yesterday z_i, today z_j)
+	#   → row    i = CI[it][1] = z₋₁  (yesterday)
+	#   → column j = CI[it][2] = z₀   (today)   ← prices/flow payoff use THIS
+	#
+	# LI = LinearIndices(π_z): column-major, first index fastest.
+	#   (1,1)→1  (2,1)→2  (1,2)→3  (2,2)→4   for nz=2
+	#   i.e. LI[i,j] = i + (j-1)*nz
+	#
+	# Rolling forward: today's z_j becomes tomorrow's yesterday, so the
+	# next pair is (j, k) = LI[j, k_next]  — indexed by the COLUMN, today.
 
 	CI = CartesianIndices(π_z);
 	LI = LinearIndices(π_z);
@@ -42,7 +45,6 @@ function solveHousehold(model::ModelParams, policies::ProposedPolicies, kval, vT
 	EV = zeros(nt, nl, na);
 	G = zeros(nt, nl, na); G0 = zeros(nt, nl, na);
 	C = zeros(nt, nl, na);
-
 
 	α = model.α; δ = model.δ; ϕ = model.ϕ;
 	η = policies.η; τ = policies.τ; captax = policies.captax;
@@ -80,7 +82,7 @@ function solveHousehold(model::ModelParams, policies::ProposedPolicies, kval, vT
 	while vdist > vTol
 
 		for it in 1:nt
-			today = CI[it][2]
+			today = CI[it][2] # <-- takes ONLY the column = today's z for now; need to update this once I do take previous z into account
 			for il in 1:nl
 				for ia in 1:na
 					ev = 0.0

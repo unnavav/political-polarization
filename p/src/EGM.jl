@@ -4,6 +4,9 @@ using ..ModelTypes: ModelParams, ImpliedRegimeParams, ProposedPolicies
 
 using ..Compute: weight
 using ..ModelFunctions: tax, u
+import ..Compute: supnorm, stationary
+
+export solve, numdev, solveD
 
 # Numerical derivative of EV using spacing-weighted central differences.
 # One-sided at boundaries. Clamped to [1e-12, 1e12].
@@ -67,7 +70,7 @@ function solve(V0::Array{Float64, 3}, terms::ModelParams,
     endoK = zeros(nt, nl, na)
 
     for it = 1:nt
-        iz = CI[it][1];
+        iz = CI[it][2];
         for ia in 1:na
             kpr = agrid[ia]
             for il in 1:nl
@@ -113,7 +116,7 @@ function solve(V0::Array{Float64, 3}, terms::ModelParams,
     TV = zeros(nt, nl, na)
 
     for it = 1:nt
-        iz = CI[it][1];
+        iz = CI[it][2];
         for ia in 1:na
             for il in 1:nl
                 c = (1.0 + r[iz] * (1.0 - captax[il])) * agrid[ia] +

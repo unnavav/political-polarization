@@ -8,7 +8,7 @@ module Compute
 
 using Distributions: Normal, cdf
 
-export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary
+export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm
 
 # ─── Interpolation ───
 
@@ -56,6 +56,7 @@ end
 
 function getTauchen(Nz::Int, mu::Float64, sigma::Float64, rho::Float64, s::Float64)
 
+    # need to back out σ^2_e given σ^2_l
     sigma_x = sqrt(sigma^2 / (1.0 - rho^2))
 
     x_1  = mu - s * sigma_x

@@ -76,8 +76,16 @@ function calcr(α::Float64, δ::Float64, k::Float64, η::Float64,z::Vector{Float
     return α .* z .* (k / (1.0 + η)).^(α - 1.0) .- δ
 end
 
+function calcr(α, δ, k::Float64, η, z::Float64) #scalar method
+     return α * z * (k/(1+η))^(α-1) - δ
+end
+
 function calcw(α::Float64, k::Float64, η::Float64,z::Vector{Float64})
     return (1.0 - α) .* z .* (k / (1.0 + η)).^α
+end
+
+function calcw(α, k::Float64, η, z::Float64) #scalar method
+    return (1-α) * z * (k/(1+η))^α
 end
 
 # Partials w.r.t. η (for comparative statics / GE effects)

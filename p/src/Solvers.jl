@@ -1,6 +1,6 @@
 module Solvers
 
-using LinearAlgebra: Tridiagonal
+using LinearAlgebra: Tridiagonal, dot
 
 using ..ModelTypes: ModelParams, ImpliedRegimeParams, ProposedPolicies
 using ..Compute: weight, supnorm
@@ -8,6 +8,8 @@ using ..EGM: solve
 using ..ModelFunctions: tax, u, bellmanValue
 
 using Printf: @printf
+
+export KSsolver
 
 # ─── Golden section search ───
 
@@ -340,5 +342,74 @@ function GSSbacksolve(nl::Int, na::Int, Vpr::Matrix{Float64}, terms::NamedTuple,
 
     return V, G
 end
+
+function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
+                   all_prices, CI, vTol)
+        
+    # future K prediction for each TFP state
+    # futureKs[iz, ik]: predicted K' when next period's z = iz, given today's K = Kgrid[ik]
+
+    nk, nz, nl, na = size(V)
+    EV = zeros(nk, nz, nl, na)
+
+    π_z = params.π_z
+    π_l = params.π_l
+
+    r_vals = all_prices.r
+    w_vals = all_prices.w
+    λ_vals = all_prices.λ
+    captax = policies.captax
+
+    print("Solving Household Problem...\n")
+    iter_ct = 1;
+    vdist = 10.0;
+    while vdist > vTol
+                
+        #finding expected value: use projected future K to forecast and then take weighted average across the V's
+        @views for ik in 1:nk
+            for iz in 1:nz
+                EK = futureKs[iz,ik];
+                ix, we = weight(Kgrid, EK);
+                for il in 1:nl
+                    for ia in 1: na
+                        ev = 0.0
+                        for jz in 1:nz
+                            weighted_V = we*V0[ix, jz, :, ia] + (1-we)*V0[ix+1, jz , :, ia]
+                            ev += π_z[iz,jz]*dot(π_l[il,:], weighted_V)
+                        end
+                        EV[ik, iz, il, ia] = ev;
+                    end 
+                end
+            end
+        end
+        
+        for ik = 1:nk
+            prices = ImpliedRegimeParams(λ_vals[ik,:], r_vals[ik,:], w_vals[ik,:]);
+            Vk, Gk, Ck  = solve(EV[ik, :, :, :], params, policies, prices, CI)
+
+            V[ik, :, :, :] = Vk
+            G[ik, :, :, :] = Gk
+            C[ik, :, :, :] = Ck
+
+        end
+
+        vdist = max(supnorm(V, V0, 4), supnorm(G, G0, 4))
+        if iter_ct % 100 == 0
+            @printf("\tIteration %i: ||V - V0|| = %1.6f, ||G - G0|| = %1.6f, dist = %1.6f\n", 
+            iter_ct, supnorm(V,V0,4), supnorm(G,G0,4), vdist)
+        end
+
+        V0 .= V
+        G0 .= G
+
+        iter_ct += 1;
+
+    end
+
+    @printf("\tConverged in %i iters, dist = %1.6f\n", iter_ct, vdist)
+    return V, G, C, iter_ct, vdist
+end
+
+
 
 end

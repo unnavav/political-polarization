@@ -29,6 +29,8 @@ function getDistr(G::Array{Float64,3}, amu::Vector{Float64}, agrid::Vector{Float
             for il in 1:nl
                 ix, we = weight(agrid, kval)
                 kdval = G[it, il, ix] * we + G[it, il, ix+1] * (1.0 - we)
+                kdval = clamp(kdval, amu[1], amu[end])       # ← add this line
+
                 ix2, we2 = weight(amu, kdval)
                 ixgrid[it, il, im] = ix2
                 wegrid[it, il, im] = we2
@@ -52,15 +54,13 @@ function getDistr(G::Array{Float64,3}, amu::Vector{Float64}, agrid::Vector{Float
                 for tomorrow in 1:nz
                     jt = LI[today, tomorrow]
                     for jl in 1:nl
-                        μ_val1 = π_z[today, tomorrow] * π_l[il, jl] * μ_val * we
+                        base = π_z[today, tomorrow] * π_l[il, jl] * μ_val
                         if ix < nmu
-                            μ_val2 = π_z[today, tomorrow] * π_l[il, jl] * μ_val * (1.0 - we)
+                            μ1[jt, jl, ix]     += base * we
+                            μ1[jt, jl, ix + 1] += base * (1.0 - we)
                         else
-                            μ_val2 = 0.0
+                            μ1[jt, jl, ix]     += base          # all mass at last node, nothing dropped
                         end
-
-                        μ1[jt, jl, ix]     += μ_val1
-                        μ1[jt, jl, ix + 1] += μ_val2
                     end
                 end
             end
@@ -115,15 +115,13 @@ function transitDistr(g_t::Matrix{Float64}, μ_prev::Array{Float64,3},
 
         if muval > 0.0
             for jl in 1:nl
+                base = pil[il, jl] * muval
                 if ix < nmu
-                    mu_val1 = pil[il, jl] * muval * we
-                    mu_val2 = pil[il, jl] * muval * (1.0 - we)
+                    μ1[id, jl, ix]     += base * we
+                    μ1[id, jl, ix + 1] += base * (1.0 - we)
                 else
-                    mu_val1 = pil[il, jl] * muval * we
-                    mu_val2 = 0.0
+                    μ1[id, jl, ix]     += base          # all mass at last node
                 end
-                μ1[id, jl, ix]     += mu_val1
-                μ1[id, jl, ix + 1] += mu_val2
             end
         end
     end

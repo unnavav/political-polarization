@@ -1,7 +1,7 @@
 # ModelTypes.jl
 module ModelTypes
 
-export ModelParams, ImpliedRegimeParams, ProposedPolicies
+export ModelParams, ImpliedRegimeParams, ImpliedRegimeParams_KS, ProposedPolicies
 
 struct ModelParams
     # household preference parameters
@@ -17,11 +17,22 @@ struct ModelParams
     agrid::Vector{Float64}
     lgrid::Vector{Float64}
     zgrid::Vector{Float64}
-    pil::Matrix{Float64}
-    piz::Matrix{Float64}
+    π_l::Matrix{Float64}
+    π_z::Matrix{Float64}
 
     # distribution grid
     amu::Vector{Float64}
+    # kgrid
+    Kgrid::Vector{Float64}
+end
+
+struct ImpliedRegimeParams_KS
+    # regime-specific parameters, which are fixed in each regime but can differ across regimes  
+    λ::Matrix{Float64}
+
+    # resultant prices and wages, which depend on the regime
+    r::Matrix{Float64}
+    w::Matrix{Float64}
 end
 
 struct ImpliedRegimeParams
@@ -31,10 +42,8 @@ struct ImpliedRegimeParams
     # resultant prices and wages, which depend on the regime
     r::Vector{Float64}
     w::Vector{Float64}
-
-    # this just has to be dropped in again
-    captax::Vector{Float64} 
 end
+
 
 struct ProposedPolicies
     # migration and progressivity
