@@ -344,7 +344,7 @@ function GSSbacksolve(nl::Int, na::Int, Vpr::Matrix{Float64}, terms::NamedTuple,
 end
 
 function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
-                   all_prices, CI, vTol)
+                   all_prices, CI, vTol; verbose=false)
         
     # future K prediction for each TFP state
     # futureKs[iz, ik]: predicted K' when next period's z = iz, given today's K = Kgrid[ik]
@@ -360,7 +360,10 @@ function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
     λ_vals = all_prices.λ
     captax = policies.captax
 
-    print("Solving Household Problem...\n")
+    if verbose
+        @printf("Solving Household Problem...\n")
+    end
+
     iter_ct = 1;
     vdist = 10.0;
     while vdist > vTol
@@ -394,7 +397,7 @@ function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
         end
 
         vdist = max(supnorm(V, V0, 4), supnorm(G, G0, 4))
-        if iter_ct % 100 == 0
+        if iter_ct % 100 == 0 && verbose
             @printf("\tIteration %i: ||V - V0|| = %1.6f, ||G - G0|| = %1.6f, dist = %1.6f\n", 
             iter_ct, supnorm(V,V0,4), supnorm(G,G0,4), vdist)
         end
@@ -406,7 +409,9 @@ function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
 
     end
 
-    @printf("\tConverged in %i iters, dist = %1.6f\n", iter_ct, vdist)
+    if verbose
+        @printf("\tConverged in %i iters, dist = %1.6f\n", iter_ct, vdist)
+    end
     return V, G, C, iter_ct, vdist
 end
 

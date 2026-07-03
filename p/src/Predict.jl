@@ -31,8 +31,10 @@ function simz(N_T, Nz, rnseed, P_mat)
     return izsim
 end
 
-function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, NT, rnseed, vTol)
+function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, vTol;
+    verbose = false)
 
+    NT = length(zt)
 	nk, nz, nl, na = size(V);
 	Kgrid = params.Kgrid; 
 
@@ -41,9 +43,7 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, NT, r
 
 	CI_hh = CartesianIndices((1, nz))     # for solve to hack the current setup
     V, G, C, ~, ~ = KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
-                       prices, CI_hh, vTol)
-
-	zt = simz(NT, nz, rnseed, params.π_z)
+                       prices, CI_hh, vTol; verbose)
 
 	# choose a random starting point for the simulation
 	ik0 = cld(nk, 2); K0 = Kgrid[ik0];
@@ -78,7 +78,7 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, NT, r
 	#@printf("collapse: sum(μ_today) = %.10f  (want = sum(μ_prev))\n", sum(μ_today))
 
 	for t in 1:NT
-		if t%2500 == 0
+		if t%2500 == 0 && verbose
 			@printf("\tSimulating period %i of %i\n", t, NT)
 		end
 
@@ -98,7 +98,7 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, NT, r
 
 	end
     
-	return Kt, zt
+	return Kt
 
 end
 
@@ -133,50 +133,58 @@ function update_forecast(Kt, zt, nz, burn_in)
 end
 
 function run_KS(V, V0, G, G0, C, params, policies, prices,
-                NT, rnseed, vTol, dTol; burnin=500, λ_damp=0.3, maxout=100)
+                zt, Kfore, vTol, dTol; burnin=500, λ_damp=0.3, maxout=100,
+                verbose = false)
 
-    nk, nz, nl, na = size(V)
-    Kfore = repeat([0.0 1.0], nz, 1)   # nz×2, start at log-identity
+    _, nz, _, _ = size(V)
     foredist = 1e5
     outer_ct = 1
 
+    NT = length(zt);
+    Kt = zeros(NT+1); 
+
     while foredist > dTol && outer_ct ≤ maxout
         # solve HH + simulate under current Kfore
-        Kt, zt = genForecastData(V, V0, G, G0, C, Kfore, params, policies,
-                                 prices, NT, rnseed, vTol)
+        Kt = genForecastData(V, V0, G, G0, C, Kfore, params, policies,
+                                 prices, zt, vTol, verbose = verbose)
 
         Kfore_new, R2, counts = update_forecast(Kt, zt, nz, burnin)
-
-		println("\nForecast rules:  log K' = a + b·log K")
-		println("─"^58)
-		@printf("  %-8s %11s %11s %9s %8s\n", "z-state", "a", "b", "R²", "n")
-		println("─"^58)
-		for z in 1:nz
-			flag = R2[z] < 0.99 ? "  ⚠" : ""
-			@printf("  %-8d %11.6f %11.6f %9.4f %8d%s\n",
-				z, Kfore_new[z,1], Kfore_new[z,2], R2[z], counts[z], flag)
-		end
-		println("─"^58)
-
         foredist = maximum(abs.(Kfore_new .- Kfore))
 
-        @printf("Outer %2i | foredist = %.6f | R² = [%s] | counts = [%s]\n",
-                outer_ct, foredist,
-                join([@sprintf("%.4f", r) for r in R2], ", "),
-                join(string.(counts), ", "))
+        if verbose
+            println("\nForecast rules:  log K' = a + b·log K")
+            println("─"^58)
+            @printf("  %-8s %11s %11s %9s %8s\n", "z-state", "a", "b", "R²", "n")
+            println("─"^58)
+            for z in 1:nz
+                flag = R2[z] < 0.99 ? "  ⚠" : ""
+                @printf("  %-8d %11.6f %11.6f %9.4f %8d%s\n",
+                    z, Kfore_new[z,1], Kfore_new[z,2], R2[z], counts[z], flag)
+            end
+            println("─"^58)
+            @printf("Outer %2i | foredist = %.6f | R² = [%s] | counts = [%s]\n",
+            outer_ct, foredist,
+            join([@sprintf("%.4f", r) for r in R2], ", "),
+            join(string.(counts), ", "))
+        end
 
         # damped update
         Kfore = λ_damp .* Kfore_new .+ (1 - λ_damp) .* Kfore
         outer_ct += 1
     end
 
-    if foredist ≤ dTol
-        @printf("\nConverged in %i outer iters. foredist = %.6f\n", outer_ct-1, foredist)
+    converged = foredist <= dTol
+    if converged
+        if verbose
+            @printf("\nConverged in %i outer iters. foredist = %.6f\n", outer_ct-1, foredist)
+        end
     else
+        # always report failure, regardless of verbose
         @printf("\nHit maxout=%i without converging. foredist = %.6f\n", maxout, foredist)
+        @printf("Maxout at policy (η, τ) = (%4.2f, %4.2f)\n", policies.η, policies.τ)
     end
 
-    return Kfore, Kt, zt
+    return Kfore, Kt
 end
 
 
