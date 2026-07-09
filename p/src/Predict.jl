@@ -31,6 +31,8 @@ function simz(N_T, Nz, rnseed, P_mat)
     return izsim
 end
 
+
+
 function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, vTol;
     verbose = false)
 
@@ -137,16 +139,19 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
                 verbose = false)
 
     _, nz, _, _ = size(V)
-    foredist = 1e5
+    foredist = 10.0
     outer_ct = 1
 
     NT = length(zt);
     Kt = zeros(NT+1); 
 
     while foredist > dTol && outer_ct ≤ maxout
+
+        vTol_outer = max(vTol, foredist * 1e-2)
+        
         # solve HH + simulate under current Kfore
         Kt = genForecastData(V, V0, G, G0, C, Kfore, params, policies,
-                                 prices, zt, vTol, verbose = verbose)
+                                 prices, zt, vTol_outer, verbose = verbose)
 
         Kfore_new, R2, counts = update_forecast(Kt, zt, nz, burnin)
         foredist = maximum(abs.(Kfore_new .- Kfore))

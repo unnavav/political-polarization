@@ -2,7 +2,10 @@
 module ModelFunctions
 
 using ..Compute: weight
-export u, bellmanValue, tax, mapVotes, calcr, calcw, dwde, drde
+using ..ModelTypes: ModelParams, ImpliedRegimeParams, ProposedPolicies
+using ..DistrTools: getDistr, transitDistr
+using LinearAlgebra: dot
+export u, bellmanValue, getExpectationKS, tax, mapVotes, calcr, calcw, dwde, drde, mapVotesKS, voteSharePath, build_votes
 
 
 # ─── Utility fns ───
@@ -25,6 +28,33 @@ function bellmanValue(apr::Float64, y::Float64, β::Float64,
     else
         return (y - apr)^(1.0 - σ) / (1.0 - σ) + β * vc
     end
+end
+
+function getExpectationKS(futureKs::Matrix{Float64}, V0::Array{Float64,4}, params::ModelParams)
+    nk, nz, nl, na = size(V0)
+    π_z = params.π_z
+    π_l = params.π_l
+    Kgrid = params.Kgrid
+    EV = zeros(nk, nz, nl, na)
+
+    @views for ik in 1:nk
+        for iz in 1:nz
+            EK = futureKs[iz, ik]
+            ix, we = weight(Kgrid, EK)
+            for il in 1:nl
+                for ia in 1:na
+                    ev = 0.0
+                    for jz in 1:nz
+                        weighted_V = we*V0[ix, jz, :, ia] + (1-we)*V0[ix+1, jz, :, ia]
+                        ev += π_z[iz, jz]*dot(π_l[il, :], weighted_V)
+                    end
+                    EV[ik, iz, il, ia] = ev
+                end
+            end
+        end
+    end
+
+    return EV
 end
 
 # ─── Government and Elections ───
@@ -67,6 +97,96 @@ function mapVotes(VOTES::Array{Float64,3}, amu::Vector{Float64},
     winner = majority > 0.5 ? 1 : 0
 
     return vdistr, winner
+end
+
+function mapVotesKS(votes::Array{Int,3}, μ::Array{Float64,3},
+                    futureK::Float64, Kgrid::Vector{Float64},
+                    amu::Vector{Float64}, agrid::Vector{Float64})
+    nl, nmu = size(μ, 2), size(μ, 3)
+    ixK, weK = weight(Kgrid, futureK)
+    todays_Vote = weK .* votes[ixK, :, :] .+ (1-weK) .* votes[ixK+1, :, :]  # (nl,na)
+
+    vdistr = zeros(nl, nmu)
+    share = 0.0
+    for im in 1:nmu
+        ix, we = weight(agrid, amu[im])
+        for il in 1:nl
+            mass = μ[1, il, im]
+            v = we*todays_Vote[il, ix] + (1-we)*todays_Vote[il, ix+1]
+            vdistr[il, im] = mass * v
+            share += mass * v
+        end
+    end
+
+    return vdistr, share
+end
+
+function voteSharePath(incumbent, challenger, zt_shock, params)
+    Kgrid = params.Kgrid
+    amu   = params.amu
+    agrid = params.agrid
+    nk, nz, nl, na = size(incumbent.V)
+    NT = length(zt_shock)
+
+    # --- 1. Build the vote indicator votes[ik, il, ia] once ---
+    # EV for each policy (full, not collapsed — we need every K-node)
+    fK_i = exp.(incumbent.Kfore[:,1]  .+ incumbent.Kfore[:,2]  .* log.(Kgrid)')
+    fK_c = exp.(challenger.Kfore[:,1] .+ challenger.Kfore[:,2] .* log.(Kgrid)')
+    EV_i = getExpectationKS(fK_i, incumbent.V,  params)   # (nk,nz,nl,na)
+    EV_c = getExpectationKS(fK_c, challenger.V, params)
+
+    # --- 2. Simulate the distribution forward along zt_shock ---
+    # seed μ from a starting K (grid median) and z = zt_shock[1]
+    ik0 = cld(nk, 2)
+    Kt  = zeros(NT+1); Kt[1] = Kgrid[ik0]
+
+    # initial cross-section: use the incumbent's policy at the seed
+    # (reuse your getDistr → collapse → slice machinery, or seed uniform and burn in)
+	CI_dist = CartesianIndices(params.π_z)   # (nz,nz) for getDistr
+	LI_dist = LinearIndices(params.π_z)
+    G_start = incumbent.G[ik0, :, :, :]                        # (nz,nl,na) single-z
+	G_pair = zeros(nz*nz, nl, na)
+	for it in 1:(nz*nz)
+		today = CI_dist[it][2]
+		G_pair[it, :, :] = G_start[today, :, :]
+	end
+
+    # ... lift to pair-state (nz²) if getDistr is pair-state ...
+    μ_transit, _ = getDistr(G_pair, params.amu, params.agrid, params.π_l, params.π_z,
+                         CI_dist, LI_dist, params.ϕ)
+
+    nmu = length(params.amu)
+    μ_today = zeros(nz, nl, nmu)
+    for it in 1:(nz*nz)
+        today = CI_dist[it][2]
+        μ_today[today, :, :] .+= μ_transit[it, :, :]
+    end
+    μ_transit = μ_today[zt_shock[1]:zt_shock[1], :, :]   # (1, nl, nmu)
+
+    share_path = zeros(NT)
+
+    for t in 1:NT
+        K  = Kt[t]
+        iz = zt_shock[t]
+
+        # forecasted future K from the INCUMBENT rule at today's (K, z)
+        futureK = exp(incumbent.Kfore[iz,1] + incumbent.Kfore[iz,2]*log(K))
+
+        # vote share at this state: z-slice the indicator, interp to futureK
+        votes_z = build_votes(EV_c, EV_i, iz)            # (nl, na) → see below
+        _, share_path[t] = mapVotesKS(votes_z, μ_transit, futureK, Kgrid, amu, agrid)
+
+        # step the distribution forward with the incumbent's policy at (K, z)
+        ix, we = weight(Kgrid, K)
+        G_t = we .* incumbent.G[ix, iz, :, :] .+ (1-we) .* incumbent.G[ix+1, iz, :, :]
+        μ_transit, Kt[t+1] = transitDistr(G_t, μ_transit, amu, agrid, params.ϕ, params.π_l)
+    end
+
+    return share_path, Kt
+end
+
+function build_votes(EV_c::Array{Float64,4}, EV_i::Array{Float64,4}, iz::Int)
+    return Int.(EV_c[:, iz, :, :] .> EV_i[:, iz, :, :])
 end
 
 # ─── Pricing and Policy Responsiveness ───

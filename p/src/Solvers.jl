@@ -5,7 +5,7 @@ using LinearAlgebra: Tridiagonal, dot
 using ..ModelTypes: ModelParams, ImpliedRegimeParams, ProposedPolicies
 using ..Compute: weight, supnorm
 using ..EGM: solve
-using ..ModelFunctions: tax, u, bellmanValue
+using ..ModelFunctions: tax, u, bellmanValue, getExpectationKS
 
 using Printf: @printf
 
@@ -369,22 +369,7 @@ function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
     while vdist > vTol
                 
         #finding expected value: use projected future K to forecast and then take weighted average across the V's
-        @views for ik in 1:nk
-            for iz in 1:nz
-                EK = futureKs[iz,ik];
-                ix, we = weight(Kgrid, EK);
-                for il in 1:nl
-                    for ia in 1: na
-                        ev = 0.0
-                        for jz in 1:nz
-                            weighted_V = we*V0[ix, jz, :, ia] + (1-we)*V0[ix+1, jz , :, ia]
-                            ev += π_z[iz,jz]*dot(π_l[il,:], weighted_V)
-                        end
-                        EV[ik, iz, il, ia] = ev;
-                    end 
-                end
-            end
-        end
+        EV = getExpectationKS(futureKs, V0, params)
         
         for ik = 1:nk
             prices = ImpliedRegimeParams(λ_vals[ik,:], r_vals[ik,:], w_vals[ik,:]);

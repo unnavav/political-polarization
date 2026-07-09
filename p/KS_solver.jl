@@ -11,70 +11,99 @@ using LinearAlgebra: dot
 using StatsBase: countmap
 using Dates
 
-include("src/ModelTypes.jl")
-@printf("Loaded ModelTypes.jl\n")
-
-include("src/Compute.jl")
-@printf("Loaded Compute.jl\n")
-
-include("src/ModelFunctions.jl")
-@printf("Loaded ModelFunctions.jl\n")
-
-include("src/EGM.jl")
-@printf("Loaded EGM.jl\n")
-
-include("src/DistrTools.jl")
-@printf("Loaded DistrTools.jl\n")
-
-include("src/Solvers.jl")
-@printf("Loaded Solvers.jl\n")
-
-include("src/SteadyState.jl")
-@printf("Loaded Steady States.jl\n")
-
-include("src/Predict.jl")
-@printf("Loaded Predict.jl\n")
+for file in [
+    "src/ModelTypes.jl",
+    "src/Compute.jl",
+    "src/DistrTools.jl",
+    "src/ModelFunctions.jl",
+    "src/EGM.jl",
+    "src/Solvers.jl",
+    "src/SteadyState.jl",
+    "src/Predict.jl"]
+    include(file)
+    @printf("Loaded %s\n", basename(file))
+end
 
 using .ModelTypes
-using .ModelFunctions
 using .Compute
 using .EGM
 using .DistrTools
 using .Solvers
 using .SteadyState
 using .Predict
+using .ModelFunctions
 
-# model parameters
-const α::Float64 = 0.36;
-const β::Float64 = 0.96;
-const δ::Float64 = 0.06;
-const σ::Float64 = 2;
-const ϕ::Float64 = 0;
+# ─── Frequency-invariant parameters ───
+const α::Float64 = 0.36
+const σ::Float64 = 2
+const ϕ::Float64 = 0
+const μ_l::Float64 = 0
+const μ_z::Float64 = 0
 
 # grid sizes and parameters
 const na::Int64 = 100; 
-const nl::Int64 = 7;
+const nl::Int64 = 15;
 const nz::Int64 = 5;
-const nk::Int64 = 25;
+const nk::Int64 = 13;
 
 const a_l::Float64 = 0;
 const a_h::Float64 = 100;
 
-# calibrations for idiosyncratic income (vibes)
-const μ_l::Float64 = 0; 
-const ρ_l::Float64 = .9;
-const σ_l::Float64 = .2;
+# ─── Frequency switch: read from environment, default to "annual" ───
+const freq = get(ENV, "FREQ", "quarterly")   # default to quarterly if not set
 
-# calibrations for aggregate TFP (Khan and Thomas 2013 would have 
-# ρ_z = 0.909; I am setting it lower for two dimensional z with
-# some variance for now.)
-const μ_z::Float64 = 0;
-const ρ_z::Float64 = .909;
-const σ_z::Float64 = 0.014;
+display("Frequency set to: $freq")
 
-# kgrid
-const kL::Float64 = 6; const kH::Float64 = 28; # this could be informed by steady states, but for now we do it this way
+if freq == "quarterly"
+    const β::Float64   = 0.99
+    const δ::Float64   = 0.025
+    const ρ_l::Float64 = 0.9878      # STY persistence quarterly
+    const σ_l::Float64 = 0.087       # STY innovation std, quarterly
+    const ρ_z::Float64 = 0.976
+    const σ_z::Float64 = 0.007
+    
+    const Kfore_start = [0.135091 0.955065;  #taken from previous run
+			0.026151 0.991301;
+			-0.000318 1.000106;
+			-0.000357 1.000119;
+			-0.006269 1.002085]
+			
+elseif freq == "annual"
+    const β::Float64   = 0.96
+    const δ::Float64   = 0.06
+    const ρ_l::Float64 = 0.952     # Storesletten-Telmer-Yaron
+    const σ_l::Float64 = 0.17       # = sqrt(0.061), STY persistent innovation variance σ²_η
+    const ρ_z::Float64 = 0.909      # Khan-Thomas 2013
+    const σ_z::Float64 = 0.014
+    
+    const Kfore_start = [0.102898 0.946118;  #taken from previous run
+			0.112504 .944115;
+			0.121485 0.942448;
+			0.131148 0.940548;
+			0.139579 0.939373]
+else
+    error("FREQ must be \"annual\" or \"quarterly\", got \"$freq\"")
+end
+
+const freq_label = freq   # use in output filename
+
+# building fixed grids ───
+
+const np::Int64 = 5; # number of policies
+const pol_l::Float64 = 0;
+const pol_h::Float64 = .18;
+
+τ_grid = range(pol_l, pol_h, length = np);
+η_grid = range(pol_l, pol_h, length = np);
+policy_grid = [(η, τ) for η in η_grid, τ in τ_grid];
+captax = repeat([0.0], outer = nl);
+
+const kH::Float64 = ((1.0/β - 1.0 + δ) / α)^(1.0/(α-1.0)) * (1.0 + maximum(η_grid)) * 1.5
+const kL::Float64 = max(1.0, ((1.0/β - 1.0 + δ) / α)^(1.0/(α-1.0)) * (1.0 + minimum(η_grid)) * 0.5)
 Kgrid = collect(range(kL, kH, length = nk));
+
+agrid = logspace(a_l, a_h, na);
+amu = collect(range(a_l, a_h, length=na*10));
 
 grid_range = 2.575;
 
@@ -83,18 +112,8 @@ grid_range = 2.575;
 
 stationary_l = stationary(π_l);
 const lagg::Float64 = dot(stationary_l, lgrid);
- 
-agrid = logspace(a_l, a_h, na);
-amu = collect(range(a_l, a_h, length=na*10));
 
-const np::Int64 = 10; # number of policies
-const pol_l::Float64 = 0;
-const pol_h::Float64 = .2;
-
-τ_grid = range(pol_l, pol_h, length = np);
-η_grid = range(pol_l, pol_h, length = np);
-policy_grid = [(η, τ) for η in η_grid, τ in τ_grid];
-captax = repeat([0.0], outer = nl);
+# finally starting the convergence ───
 
 const NT = 5000; #three thousand periods for sampling
 const rnseed = 1234567;
@@ -104,12 +123,6 @@ const zt = simz(NT, nz, rnseed, π_z);
 const params = ModelParams(α, β, δ, σ, ϕ, agrid, 
 		lgrid, zgrid, π_l, π_z, amu, Kgrid);
 
-const Kfore_start = [0.102898 0.946118; 
-			0.112504 .944115;
-			0.121485 0.942448;
-			0.131148 0.940548;
-			0.139579 0.939373]
-
 const dTol = 1e-3;
 const vTol = 1e-6;
 
@@ -118,7 +131,7 @@ datestr = Dates.format(now(), "yyyy-mm-dd_HHMM")
 
 for idx in eachindex(policy_grid)[1:4]
 	η, τ = policy_grid[idx]
-
+	
 	@printf("Solving (eta, tau) = (%4.2f, %4.2f)--------------\n", η, τ)
 
 	# set up local forecast to be updated within each thread
@@ -151,16 +164,19 @@ for idx in eachindex(policy_grid)[1:4]
 		G0[ik, iz, il, ia] = agrid[ia];
 	end
 	
-	@printf("K range for (%4.2f, %4.2f): %2.4f, %2.4f\n", 
-		η, τ, minimum(Kt), maximum(Kt))
 	Kfore_out, Kt = run_KS(V, V0, G, G0, C, params, policies, prices,
-                zt, Kfore_start, vTol, dTol, verbose = true)
-	
+                zt, Kfore_start, vTol, dTol, λ_damp = 0.7, verbose = true)
+	@printf("K range for (%4.2f, %4.2f): %2.4f, %2.4f\n", 
+		η, τ, minimum(Kt[500:NT+1]), maximum(Kt[500:NT+1]))
+
+	result_p = (Kfore = Kfore_out, V = V, G = G, Kt = Kt,
+		 policies = policies);
+    fname = @sprintf("policy_%.4f_%.4f.jld2", η, τ)
+    @save "../d/ks/policy_results/$(fname)" result_p
 	# storing each stationary equilibrium
-	results[(η, τ)] = (Kfore = Kfore_out, V = V, G = G, Kt = Kt,
-		policies = policies)
+	results[(η, τ)] = result_p
 
 end
 
-@save "KS_Solves_$(datestr).jld2" results params zt
-println("Done. Saved to KS_Solves_$(datestr).jld2")
+@save "KS_Solves_$(datestr)_quarterly.jld2" results params zt
+println("Done. Saved to KS_Solves_$(datestr)_quarterly.jld2")
