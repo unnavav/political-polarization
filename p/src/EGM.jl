@@ -54,8 +54,6 @@ function solve(V0::Array{Float64, 3}, terms::ModelParams,
     w      = prices.w   
     captax = policies.captax
 
-    nz = length(zgrid);
-
     nt, nl, na = size(V0)
     amin = agrid[1]
     amax = agrid[end]

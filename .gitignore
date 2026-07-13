@@ -2,5 +2,6 @@
 *.Rhistory
 *.asv
 *.mat
-*.jld2
+*.jld2*
+*.pdf
 d/ks_rmseed_in_pr_exo_logit_R.mat

@@ -171,6 +171,10 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
             outer_ct, foredist,
             join([@sprintf("%.4f", r) for r in R2], ", "),
             join(string.(counts), ", "))
+
+        @printf("K range for (%4.2f, %4.2f): %2.4f, %2.4f\n", 
+            policies.η, policies.τ,
+            minimum(Kt[501:end]), maximum(Kt[501:end]))
         end
 
         # damped update
