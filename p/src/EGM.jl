@@ -68,7 +68,7 @@ function solve(V0::Array{Float64, 3}, terms::ModelParams,
     endoK = zeros(nt, nl, na)
 
     for it = 1:nt
-        iz = CI[it][2];
+        iz = CI[it][2]; # for finding wages given lambdas
         for ia in 1:na
             kpr = agrid[ia]
             for il in 1:nl

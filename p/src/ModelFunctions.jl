@@ -30,25 +30,29 @@ function bellmanValue(apr::Float64, y::Float64, β::Float64,
     end
 end
 
-function getExpectationKS(futureKs::Matrix{Float64}, V0::Array{Float64,4}, params::ModelParams)
-    nk, nz, nl, na = size(V0)
+function getExpectationKS(futureKs::Matrix{Float64}, V0::Array{Float64,4}, params::ModelParams,
+                    CI::CartesianIndices{2, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}},
+                    LI::LinearIndices{2, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}})
+    nk, nt, nl, na = size(V0)
     π_z = params.π_z
     π_l = params.π_l
     Kgrid = params.Kgrid
-    EV = zeros(nk, nz, nl, na)
+    EV = zeros(nk, nt, nl, na)
 
     @views for ik in 1:nk
-        for iz in 1:nz
-            EK = futureKs[iz, ik]
+        for it in 1:nt
+            EK = futureKs[it, ik]
             ix, we = weight(Kgrid, EK)
+            _, iz = CI[it]
             for il in 1:nl
                 for ia in 1:na
                     ev = 0.0
                     for jz in 1:nz
-                        weighted_V = we*V0[ix, jz, :, ia] + (1-we)*V0[ix+1, jz, :, ia]
+                        jt = LI[iz, jz];
+                        weighted_V = we*V0[ix, jt, :, ia] + (1-we)*V0[ix+1, jt, :, ia]
                         ev += π_z[iz, jz]*dot(π_l[il, :], weighted_V)
                     end
-                    EV[ik, iz, il, ia] = ev
+                    EV[ik, it, il, ia] = ev
                 end
             end
         end

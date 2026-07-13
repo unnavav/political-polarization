@@ -84,12 +84,12 @@ end
 
 # ─── Transition distribution (one-period forward) ───
 
-function transitDistr(g_t::Matrix{Float64}, μ_prev::Array{Float64,3},
+function transitDistr(g_t::Matrix{Float64}, μ_prev::Matrix{Float64},
                       amu::Vector{Float64}, agrid::Vector{Float64},
                       ϕ::Float64, pil::Matrix{Float64})
 
     nl, _ = size(g_t)
-    nd, _, nmu = size(μ_prev)
+    _, nmu = size(μ_prev)
 
     ixgrid = zeros(Int, nl, nmu)
     wegrid = zeros(nl, nmu)
@@ -108,25 +108,25 @@ function transitDistr(g_t::Matrix{Float64}, μ_prev::Array{Float64,3},
 
     μ1 = zeros(size(μ_prev))
 
-    for id in 1:nd, im in 1:nmu, il in 1:nl
+    for im in 1:nmu, il in 1:nl
         ix = ixgrid[il, im]
         we = wegrid[il, im]
-        muval = μ_prev[id, il, im]
+        muval = μ_prev[il, im]
 
         if muval > 0.0
             for jl in 1:nl
                 base = pil[il, jl] * muval
                 if ix < nmu
-                    μ1[id, jl, ix]     += base * we
-                    μ1[id, jl, ix + 1] += base * (1.0 - we)
+                    μ1[jl, ix]     += base * we
+                    μ1[jl, ix + 1] += base * (1.0 - we)
                 else
-                    μ1[id, jl, ix]     += base          # all mass at last node
+                    μ1[jl, ix]     += base          # all mass at last node
                 end
             end
         end
     end
 
-    distrAgg = dropdims(sum(μ1, dims=(1, 2)), dims=(1, 2))
+    distrAgg = dropdims(sum(μ1, dims=1), dims=1)   # (nmu,)
     kagg = dot(amu .- ϕ, distrAgg)
 
     return μ1, kagg

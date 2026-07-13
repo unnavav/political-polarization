@@ -344,13 +344,13 @@ function GSSbacksolve(nl::Int, na::Int, Vpr::Matrix{Float64}, terms::NamedTuple,
 end
 
 function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
-                   all_prices, CI, vTol; verbose=false)
+                   all_prices, CI, LI, vTol; verbose=false)
         
     # future K prediction for each TFP state
     # futureKs[iz, ik]: predicted K' when next period's z = iz, given today's K = Kgrid[ik]
 
-    nk, nz, nl, na = size(V)
-    EV = zeros(nk, nz, nl, na)
+    nk, nt, nl, na = size(V)
+    EV = zeros(nk, nt, nl, na)
 
     π_z = params.π_z
     π_l = params.π_l
@@ -369,7 +369,7 @@ function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
     while vdist > vTol
                 
         #finding expected value: use projected future K to forecast and then take weighted average across the V's
-        EV = getExpectationKS(futureKs, V0, params)
+        EV = getExpectationKS(futureKs, V0, CI, LI, params)
         
         for ik = 1:nk
             prices = ImpliedRegimeParams(λ_vals[ik,:], r_vals[ik,:], w_vals[ik,:]);

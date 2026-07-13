@@ -36,48 +36,40 @@ end
 function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, vTol;
     verbose = false)
 
-    NT = length(zt)
-	nk, nz, nl, na = size(V);
+	CI = CartesianIndices(params.π_z)   # (nz,nz) for getDistr
+	LI = LinearIndices(params.π_z)
+
+	nk, nt, nl, na = size(V);
 	Kgrid = params.Kgrid; 
 
-	futureKs = exp.(Kfore[:, 1] .+ Kfore[:, 2] .* log.(Kgrid)')   # nz × nk
-    @assert size(futureKs) == (nz, nk)
+	futureKs = exp.(Kfore[:, 1] .+ Kfore[:, 2] .* log.(Kgrid)')   # nt × nk
+    @assert size(futureKs) == (nt, nk)
 
-	CI_hh = CartesianIndices((1, nz))     # for solve to hack the current setup
     V, G, C, ~, ~ = KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
-                       prices, CI_hh, vTol; verbose)
+                       prices, CI, LI, vTol; verbose)
 
 	# choose a random starting point for the simulation
 	ik0 = cld(nk, 2); K0 = Kgrid[ik0];
     Kt = zeros(NT+1); Kt[1] = Kgrid[ik0]
 
-	CI_dist = CartesianIndices(params.π_z)   # (nz,nz) for getDistr
-	LI_dist = LinearIndices(params.π_z)
     # initial distribution: stationary at starting K, lifted to pair-state
-    G_start = G[ik0, :, :, :]                        # (nz,nl,na) single-z
-	G_pair = zeros(nz*nz, nl, na)
-	for it in 1:(nz*nz)
-		today = CI_dist[it][2]
-		G_pair[it, :, :] = G_start[today, :, :]
-	end
+    G_start = G[ik0, :, :, :]                        # (nt, nl,na) (base K)
+
 
     # ... lift to pair-state (nz²) if getDistr is pair-state ...
-    μ_prev, _ = getDistr(G_pair, params.amu, params.agrid, params.π_l, params.π_z,
-                         CI_dist, LI_dist, params.ϕ)
+    μ_transit, _ = getDistr(G_start, params.amu, params.agrid, params.π_l, params.π_z,
+                         CI, LI, params.ϕ)
 
 	#@printf("getDistr: sum(μ_prev) = %.10f  (want 1.0)\n", sum(μ_prev))
 	#@printf("          min = %.3e  (want ≥ 0, no negatives)\n", minimum(μ_prev))
 
-	# μ_pair is (nz², nl, nmu); collapse to (nz, nl, nmu) by today's z (all for when z transition matters)
-	nmu = length(params.amu);
-	μ_today = zeros(nz, nl, nmu)
-	for it in 1:(nz*nz)
-		today = CI_dist[it][2]
-		μ_today[today, :, :] .+= μ_prev[it, :, :]
-	end
-
-	μ_transit = μ_today[zt[1]:zt[1], :, :];
 	#@printf("collapse: sum(μ_today) = %.10f  (want = sum(μ_prev))\n", sum(μ_today))
+    med_ind = ceil(Int, median(1:length(params.zgrid)))
+    NT = length(zt);
+    it_t = zeros(NT, Int);
+    it_t[1] = LI[med_ind, med_ind]   # initial pair-state index
+    it_t[2:NT] = [LI[zt[t-1], zt[t]] for t in 2:NT];
+    μ_transit = μ_transit[it_t[1], :, :]
 
 	for t in 1:NT
 		if t%2500 == 0 && verbose
@@ -85,8 +77,8 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, v
 		end
 
 		K = Kt[t]; ix, we = weight(Kgrid, K);
-		iz = zt[t];  # today's TFP state
-		G_t = we .* G[ix, iz, :, :] .+ (1-we) .* G[ix+1, iz, :, :];   # (nl, na)
+		it = it_t[t] # getting which z transition we're in
+		G_t = we .* G[ix, it, :, :] .+ (1-we) .* G[ix+1, it, :, :];   # (nl, na)
 
 		# update the distribution for the next period
 		mass_before = sum(μ_transit)
@@ -100,16 +92,16 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, v
 
 	end
     
-	return Kt
+	return Kt, it_t
 
 end
 
-function update_forecast(Kt, zt, nz, burn_in)
-    Kfore_new = zeros(nz, 2)
-    R2 = fill(NaN, nz)
-    counts = zeros(Int, nz)
+function update_forecast(Kt, zt, nt, burn_in)
+    Kfore_new = zeros(nt, 2)
+    R2 = fill(NaN, nt)
+    counts = zeros(Int, nt)
 
-    for z in 1:nz
+    for z in 1:nt
         # periods where TODAY's state is z, post burn-in, with a valid t+1
         idx = [t for t in (burn_in+1):(length(Kt)-1) if zt[t] == z]
         counts[z] = length(idx)
@@ -138,7 +130,7 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
                 zt, Kfore, vTol, dTol; burnin=500, λ_damp=0.3, maxout=100,
                 verbose = false)
 
-    _, nz, _, _ = size(V)
+    _, nt, _, _ = size(V)
     foredist = 10.0
     outer_ct = 1
 
@@ -153,7 +145,7 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
         Kt = genForecastData(V, V0, G, G0, C, Kfore, params, policies,
                                  prices, zt, vTol_outer, verbose = verbose)
 
-        Kfore_new, R2, counts = update_forecast(Kt, zt, nz, burnin)
+        Kfore_new, R2, counts = update_forecast(Kt, zt, nt, burnin)
         foredist = maximum(abs.(Kfore_new .- Kfore))
 
         if verbose
