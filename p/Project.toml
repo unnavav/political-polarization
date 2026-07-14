@@ -1,5 +1,6 @@
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+CodeTracking = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 GLM = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
 IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"

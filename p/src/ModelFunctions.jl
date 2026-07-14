@@ -71,38 +71,45 @@ function tax(gross::Float64, λ::Float64, τ::Float64)
 end
 
 
-function mapVotes(VOTES::Array{Float64,3}, amu::Vector{Float64},
-                   agrid::Vector{Float64}, adistr::Array{Float64,3},
-                   pctDem::Float64)
+function mapVotes(VOTES::Array{Float64,2}, params, μ_today::Array{Float64,2})
 
-    nl, np, nm = size(adistr)
+    agrid = params.agrid; amu = params.amu;
 
-    ixgrid = zeros(Int, nm)
-    wegrid = zeros(nm)
-    for im in 1:nm
-        ix, we = weight(agrid, amu[im])
-        ixgrid[im] = ix
-        wegrid[im] = we
+    nl, _ = size(VOTES); nμ = length(amu); 
+
+    ixgrid = zeros(Int, nμ)
+    wegrid = zeros(Float64, nμ)
+    for iμ in 1:nμ
+        ix, we = weight(agrid, amu[iμ])
+        ixgrid[iμ] = ix
+        wegrid[iμ] = we
     end
 
-    vdistr = zeros(nl, nm)
+    # interpolation sanity: each row's weights must sum to 1 (mass-preserving)
+    for im in 1:nμ
+        @assert isapprox(wegrid[im] + (1 - wegrid[im]), 1.0; atol=1e-10) "weights don't sum to 1 at im=$im"
+    end
 
-    for im in 1:nm, ip in 1:np, il in 1:nl
-        muval = adistr[il, ip, im]
-        if muval > 0.0
-            ix = ixgrid[im]
-            we = wegrid[im]
-            vdistr[il, im] += pctDem     * VOTES[il, ix,   1] * we     * muval +
-                              (1-pctDem) * VOTES[il, ix,   2] * we     * muval +
-                              pctDem     * VOTES[il, ix+1, 1] * (1-we) * muval +
-                              (1-pctDem) * VOTES[il, ix+1, 2] * (1-we) * muval
+    vdistr = zeros(nl, nμ)
+
+    for il in 1:nl, iμ in 1:nμ
+        μ_val = μ_today[il, iμ]
+        if μ_val > 0.0
+            ix = ixgrid[iμ]
+            we = wegrid[iμ]
+            vdistr[il, iμ] += VOTES[il, ix] * we * μ_val +
+                                VOTES[il, ix+1] *(1- we) * μ_val
         end
     end
 
-    majority = sum(vdistr)
-    winner = majority > 0.5 ? 1 : 0
+    voteshare = sum(vdistr)
 
-    return vdistr, winner
+    @assert -1e-8 ≤ voteshare ≤ 1.0 + 1e-8 "Θ out of [0,1]: $voteshare"
+
+    winner = voteshare > 0.5 ? 1 : 0
+
+    return vdistr, voteshare 
+
 end
 
 function mapVotesKS(votes::Array{Int,3}, μ::Array{Float64,3},
@@ -191,8 +198,8 @@ function voteSharePath(incumbent, challenger, zt_shock, params)
     return share_path, Kt
 end
 
-function build_votes(EV_c::Array{Float64,4}, EV_i::Array{Float64,4}, iz::Int)
-    return Int.(EV_c[:, iz, :, :] .> EV_i[:, iz, :, :])
+function build_votes(EV_c::Array{Float64,4}, EV_i::Array{Float64,4}, it::Int)
+    return Int.(EV_c[:, it, :, :] .> EV_i[:, it, :, :])
 end
 
 # ─── Pricing and Policy Responsiveness ───

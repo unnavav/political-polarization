@@ -10,7 +10,7 @@ using Distributions: Normal, cdf
 using Printf
 using Statistics: mean, std, median
 
-export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeKtByTransition
+export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeDataByTransition
 
 # ─── Interpolation ───
 
@@ -113,11 +113,11 @@ end
 
 # ─── Summary Statistics ───
 
-function summarizeKtByTransition(Kt, it_t, π_z, burn_in)
+function summarizeDataByTransition(Kt, it_t, π_z, burn_in)
     CI = CartesianIndices(π_z)
     nt = length(LinearIndices(π_z))
 
-    println("\nKt summary by transition (post burn-in)")
+    println("\nInput summary by transition (post burn-in)")
     println("─"^72)
     @printf("  %-8s %8s %10s %10s %10s %10s %10s\n",
             "z₋₁→z", "n", "mean", "std", "min", "median", "max")
