@@ -38,12 +38,14 @@ function getExpectationKS(futureKs::Matrix{Float64}, V0::Array{Float64,4}, param
     π_l = params.π_l
     Kgrid = params.Kgrid
     EV = zeros(nk, nt, nl, na)
+    
+    nz = length(params.zgrid);
 
     @views for ik in 1:nk
         for it in 1:nt
             EK = futureKs[it, ik]
             ix, we = weight(Kgrid, EK)
-            _, iz = CI[it]
+            iz = CI[it][2]
             for il in 1:nl
                 for ia in 1:na
                     ev = 0.0

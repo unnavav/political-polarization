@@ -2,11 +2,11 @@ module Predict
 
 using Random
 using Printf: @printf, @sprintf 
-using Statistics: mean
+using Statistics: mean, median
 
 using ..Solvers: KSsolver
 using ..DistrTools: getDistr, transitDistr
-using ..Compute: weight, supnorm
+using ..Compute: weight, supnorm, summarizeKtByTransition
 
 export simz, transition, perfectForesight, genForecastData, update_forecast, run_KS
 
@@ -49,7 +49,8 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, v
                        prices, CI, LI, vTol; verbose)
 
 	# choose a random starting point for the simulation
-	ik0 = cld(nk, 2); K0 = Kgrid[ik0];
+    NT = length(zt);
+    ik0 = cld(nk, 2); K0 = Kgrid[ik0];
     Kt = zeros(NT+1); Kt[1] = Kgrid[ik0]
 
     # initial distribution: stationary at starting K, lifted to pair-state
@@ -65,8 +66,7 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, v
 
 	#@printf("collapse: sum(μ_today) = %.10f  (want = sum(μ_prev))\n", sum(μ_today))
     med_ind = ceil(Int, median(1:length(params.zgrid)))
-    NT = length(zt);
-    it_t = zeros(NT, Int);
+    it_t = zeros(Int, NT);
     it_t[1] = LI[med_ind, med_ind]   # initial pair-state index
     it_t[2:NT] = [LI[zt[t-1], zt[t]] for t in 2:NT];
     μ_transit = μ_transit[it_t[1], :, :]
@@ -97,7 +97,7 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, v
 end
 
 function update_forecast(Kt, it_t, nt, burn_in)
-    Kfore_new = zeros(nt, 2)
+    Kfore_new = zeros(Float64, nt, 2)
     R2 = fill(NaN, nt)
     counts = zeros(Int, nt)
 
@@ -139,13 +139,14 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
 
     while foredist > dTol && outer_ct ≤ maxout
 
-        vTol_outer = max(vTol, foredist * 1e-2)
+        # vTol_outer = max(vTol, foredist * 1e-2)
+        vTol_outer = vTol;
         
         # solve HH + simulate under current Kfore
-        Kt = genForecastData(V, V0, G, G0, C, Kfore, params, policies,
+        Kt, it_t = genForecastData(V, V0, G, G0, C, Kfore, params, policies,
                                  prices, zt, vTol_outer, verbose = verbose)
 
-        Kfore_new, R2, counts = update_forecast(Kt, zt, nt, burnin)
+        Kfore_new, R2, counts = update_forecast(Kt, it_t, nt, burnin)
         foredist = maximum(abs.(Kfore_new .- Kfore))
 
         if verbose
@@ -166,6 +167,8 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
             @printf("K range for (%4.2f, %4.2f): %2.4f, %2.4f\n",
                 policies.η, policies.τ,
                 minimum(Kt[501:end]), maximum(Kt[501:end]))
+
+            summarizeKtByTransition(Kt, it_t, params.π_z, burnin)
         end
 
         # damped update
@@ -184,7 +187,7 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
         @printf("Maxout at policy (η, τ) = (%4.2f, %4.2f)\n", policies.η, policies.τ)
     end
 
-    return Kfore, Kt
+    return Kfore, Kt, it_t
 end
 
 

@@ -369,7 +369,7 @@ function KSsolver(V, V0, G, G0, C, futureKs, Kgrid, params, policies,
     while vdist > vTol
                 
         #finding expected value: use projected future K to forecast and then take weighted average across the V's
-        EV = getExpectationKS(futureKs, V0, CI, LI, params)
+        EV = getExpectationKS(futureKs, V0, params, CI, LI)
         
         for ik = 1:nk
             prices = ImpliedRegimeParams(λ_vals[ik,:], r_vals[ik,:], w_vals[ik,:]);

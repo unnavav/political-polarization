@@ -7,8 +7,10 @@
 module Compute
 
 using Distributions: Normal, cdf
+using Printf
+using Statistics: mean, std, median
 
-export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm
+export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeKtByTransition
 
 # ─── Interpolation ───
 
@@ -108,6 +110,46 @@ function supnorm(M::Array{Float64}, N::Array{Float64}, nd::Int)
     end
     return x[1]
 end
+
+# ─── Summary Statistics ───
+
+function summarizeKtByTransition(Kt, it_t, π_z, burn_in)
+    CI = CartesianIndices(π_z)
+    nt = length(LinearIndices(π_z))
+
+    println("\nKt summary by transition (post burn-in)")
+    println("─"^72)
+    @printf("  %-8s %8s %10s %10s %10s %10s %10s\n",
+            "z₋₁→z", "n", "mean", "std", "min", "median", "max")
+    println("─"^72)
+
+    for it in 1:nt
+        zprev, znow = CI[it][1], CI[it][2]
+        # periods (post burn-in, with valid t+1) whose pair == it
+        idx = [t for t in (burn_in+1):(length(Kt)-1) if it_t[t] == it]
+
+        if isempty(idx)
+            @printf("  %2d→%-5d %8d %10s %10s %10s %10s %10s\n",
+                    zprev, znow, 0, "—", "—", "—", "—", "—")
+            continue
+        end
+
+        vals = Kt[idx]
+        @printf("  %2d→%-5d %8d %10.4f %10.4f %10.4f %10.4f %10.4f\n",
+                zprev, znow, length(idx),
+                mean(vals), std(vals), minimum(vals), median(vals), maximum(vals))
+    end
+    println("─"^72)
+
+    # overall, for reference
+    allidx = (burn_in+1):(length(Kt)-1)
+    allvals = Kt[allidx]
+    @printf("  %-8s %8d %10.4f %10.4f %10.4f %10.4f %10.4f\n",
+            "ALL", length(allvals), mean(allvals), std(allvals),
+            minimum(allvals), median(allvals), maximum(allvals))
+    println("─"^72)
+end
+
 
 
 end  # module
