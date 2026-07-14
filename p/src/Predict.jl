@@ -96,18 +96,18 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies, prices, zt, v
 
 end
 
-function update_forecast(Kt, zt, nt, burn_in)
+function update_forecast(Kt, it_t, nt, burn_in)
     Kfore_new = zeros(nt, 2)
     R2 = fill(NaN, nt)
     counts = zeros(Int, nt)
 
-    for z in 1:nt
+    for z1z2 in 1:nt
         # periods where TODAY's state is z, post burn-in, with a valid t+1
-        idx = [t for t in (burn_in+1):(length(Kt)-1) if zt[t] == z]
-        counts[z] = length(idx)
+        idx = [t for t in (burn_in+1):(length(Kt)-1) if it_t[t] == z1z2]
+        counts[z1z2] = length(idx)
 
         if length(idx) < 5          # too few to estimate a 2-param rule
-            Kfore_new[z, :] = [0.0, 1.0]   # fallback: identity in logs
+            Kfore_new[z1z2, :] = [0.0, 1.0]   # fallback: identity in logs
             continue
         end
 
@@ -115,12 +115,12 @@ function update_forecast(Kt, zt, nt, burn_in)
         y = log.(Kt[idx .+ 1])       # log K_{t+1}
         X = hcat(ones(length(x)), x) # design matrix [1  logK]
         β = X \ y                    # OLS: [intercept, slope]
-        Kfore_new[z, :] = β
+        Kfore_new[z1z2, :] = β
 
         ŷ = X * β
         ss_res = sum((y .- ŷ).^2)
         ss_tot = sum((y .- mean(y)).^2)
-        R2[z] = ss_tot > 0 ? 1 - ss_res/ss_tot : NaN
+        R2[z1z2] = ss_tot > 0 ? 1 - ss_res/ss_tot : NaN
     end
 
     return Kfore_new, R2, counts
@@ -149,24 +149,23 @@ function run_KS(V, V0, G, G0, C, params, policies, prices,
         foredist = maximum(abs.(Kfore_new .- Kfore))
 
         if verbose
+            CI = CartesianIndices(params.π_z)
             println("\nForecast rules:  log K' = a + b·log K")
-            println("─"^58)
-            @printf("  %-8s %11s %11s %9s %8s\n", "z-state", "a", "b", "R²", "n")
-            println("─"^58)
-            for z in 1:nz
-                flag = R2[z] < 0.99 ? "  ⚠" : ""
-                @printf("  %-8d %11.6f %11.6f %9.4f %8d%s\n",
-                    z, Kfore_new[z,1], Kfore_new[z,2], R2[z], counts[z], flag)
+            println("─"^62)
+            @printf("  %-10s %11s %11s %9s %8s\n", "z₋₁→z", "a", "b", "R²", "n")
+            println("─"^62)
+            for z1z2 in 1:nt
+                zprev, znow = CI[z1z2][1], CI[z1z2][2]
+                flag = (isnan(R2[z1z2]) || R2[z1z2] < 0.99) ? "  ⚠" : ""
+                @printf("  %2d→%-6d %11.6f %11.6f %9.4f %8d%s\n",
+                    zprev, znow, Kfore_new[z1z2,1], Kfore_new[z1z2,2],
+                    R2[z1z2], counts[z1z2], flag)
             end
-            println("─"^58)
-            @printf("Outer %2i | foredist = %.6f | R² = [%s] | counts = [%s]\n",
-            outer_ct, foredist,
-            join([@sprintf("%.4f", r) for r in R2], ", "),
-            join(string.(counts), ", "))
-
-        @printf("K range for (%4.2f, %4.2f): %2.4f, %2.4f\n", 
-            policies.η, policies.τ,
-            minimum(Kt[501:end]), maximum(Kt[501:end]))
+            println("─"^62)
+            @printf("Outer %2i | foredist = %.6f\n", outer_ct, foredist)
+            @printf("K range for (%4.2f, %4.2f): %2.4f, %2.4f\n",
+                policies.η, policies.τ,
+                minimum(Kt[501:end]), maximum(Kt[501:end]))
         end
 
         # damped update
