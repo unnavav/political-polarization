@@ -1,5 +1,11 @@
+
+# image files
 *.png
-*.Rhistory
 *.asv
+*.pdf
+
+# data files
 *.mat
-d/ks_rmseed_in_pr_exo_logit_R.mat
+*.jld2*
+*.mat
+*.Rhistory
