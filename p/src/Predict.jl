@@ -6,7 +6,7 @@ using Statistics: mean, median
 
 using ..Solvers: KSsolver
 using ..DistrTools: getDistr, transitDistr
-using ..Compute: weight, supnorm, summarizeKtByTransition
+using ..Compute: weight, supnorm, summarizeDataByTransition, interp2
 using ..ModelFunctions: getExpectationKS, build_votes, mapVotes
 
 export simz, transition, perfectForesight, genForecastData, update_forecast, run_KS
@@ -40,32 +40,34 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies1, policies2,
 	CI = CartesianIndices(params.π_z)   # (nz,nz) for getDistr
 	LI = LinearIndices(params.π_z)
 
-	nk, nt, nl, na = size(V);
+	nΘ, nk, nt, nl, na = size(V);
 	Kgrid = params.Kgrid; 
+    Θgrid = params.Θgrid;
 
     futureKs = exp.(Kfore[:, 1] .+ Kfore[:, 2] .* log.(Kgrid)')
     @assert size(futureKs) == (nt, nk)
 
     V1, G1, C1, ~, ~ = KSsolver(copy(V), copy(V0), copy(G), copy(G0), copy(C), 
-        futureKs, Kgrid, params, policies1, prices1, CI, LI, vTol; verbose)
-    V2, G2, C2, ~, ~ = KSsolver(copy(V), copy(V0), copy(G), copy(G0), copy(C),
-        futureKs, Kgrid, params, policies2, prices2, CI, LI, vTol; verbose)
-
+        futureKs, Kgrid, params, policies1, policies2, prices, CI, LI, vTol; verbose)
+ 
     EV1 = getExpectationKS(futureKs, V1, params, CI, LI)
-    EV2 = getExpectationKS(futureKs, V2, params, CI, LI)
 
-    VOTES = zeros(nk,nt,nl,na); 
-    for it in 1:nt
-        VOTES[:,it,:,:] = Int.(EV1[:, it, :, :] .> EV2[:, it, :, :]); 
+    # my votes are based on historical TFP transition and vote shares today 
+    VOTES = zeros(nΘ, nk,nt,nl,na); 
+    for iΘ in 1:nΘ, it in 1:nt
+        VOTES[iΘ,:,it,:,:] = Int.(EV1[iΘ,:, it, :, :] .> EV2[iΘ, :, it, :, :]); 
     end
 
 	# choose a random starting point for the simulation
     NT = length(zt);
-    ik0 = cld(nk, 2); K0 = Kgrid[ik0];
-    Kt = zeros(NT+1); Kt[1] = Kgrid[ik0]
+    Kt = zeros(Float64, NT+1);
+    Θt = zeros(Float64, NT+1);
+    
+    #init each vector that needs yesterday's outcome
+    Kt[1] = Kgrid[cld(nk, 2)]; Θt[1] = Θgrid[cld(nΘ, 2)];
 
     # initial distribution: stationary at starting K, lifted to pair-state
-    G_start = G1[ik0, :, :, :]                        # (nt, nl,na) (base K)
+    G_start = G1[cld(nΘ,2), cld(nk,2), :, :, :]                        # (nt, nl,na) (base K)
     μ_transit, _ = getDistr(G_start, params.amu, params.agrid, params.π_l, params.π_z,
                          CI, LI, params.ϕ)
 
@@ -74,26 +76,28 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies1, policies2,
 
 	#@printf("collapse: sum(μ_today) = %.10f  (want = sum(μ_prev))\n", sum(μ_today))
     med_ind = ceil(Int, median(1:length(params.zgrid)))
+
     it_t = zeros(Int, NT);
     it_t[1] = LI[med_ind, med_ind]   # initial pair-state index
     it_t[2:NT] = [LI[zt[t-1], zt[t]] for t in 2:NT];
+
     μ_transit = μ_transit[it_t[1], :, :]
-    votes_t = zeros(Float64, NT);
 
 	for t in 1:NT
 		if t%2500 == 0 && verbose
 			@printf("\tSimulating period %i of %i\n", t, NT)
 		end
-
+        
         # getting today's vote to be used for tomorrow. 
 		K = Kt[t]; ix, we = weight(Kgrid, K);
 		it = it_t[t] # getting which z transition we're in
-        VOTES_t = we.*VOTES[ix, it, :, :] + (1-we) .* VOTES[ix+1, it, :, :];
-        _, voteshare = mapVotes(VOTES_t, params, μ_transit)
-        votes_t[t] = voteshare;
+        Θ = Θ_t[t]; Θix, Θwe = weight(Θgrid, Θ);
+        VOTES_today = interp2(VOTES, Θix, Θwe, ix, we);
+        _, voteshare = mapVotes(VOTES_today, params, μ_transit)
+        Θ_t[t+1] = voteshare;
 
 		# update the distribution for the next period
-        G_t = we .* G1[ix, it, :, :] .+ (1-we) .* G1[ix+1, it, :, :];   # (nl, na)
+        G_t = interp2(G1, Θix, Θwe, ix, we);  # (nl, na)
 		mass_before = sum(μ_transit)
 		μ_transit, Kt[t+1] = transitDistr(G_t, μ_transit, params.amu, params.agrid, params.ϕ, params.π_l)
 		mass_after = sum(μ_transit)

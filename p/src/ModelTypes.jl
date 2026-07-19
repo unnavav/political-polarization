@@ -17,22 +17,20 @@ struct ModelParams
     agrid::Vector{Float64}
     lgrid::Vector{Float64}
     zgrid::Vector{Float64}
+    Kgrid::Vector{Float64}
+    Θgrid::Vector{Float64}
+    amu::Vector{Float64}
     π_l::Matrix{Float64}
     π_z::Matrix{Float64}
-
-    # distribution grid
-    amu::Vector{Float64}
-    # kgrid
-    Kgrid::Vector{Float64}
 end
 
-struct ImpliedRegimeParams_KS
+struct ImpliedRegimeParams_KS{N}
     # regime-specific parameters, which are fixed in each regime but can differ across regimes  
-    λ::Matrix{Float64}
+    λ::Array{Float64,N}
 
     # resultant prices and wages, which depend on the regime
-    r::Matrix{Float64}
-    w::Matrix{Float64}
+    r::Array{Float64,N}
+    w::Array{Float64,N}
 end
 
 struct ImpliedRegimeParams

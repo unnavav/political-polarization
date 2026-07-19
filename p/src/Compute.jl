@@ -10,7 +10,7 @@ using Distributions: Normal, cdf
 using Printf
 using Statistics: mean, std, median
 
-export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeDataByTransition
+export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeDataByTransition, interp2
 
 # ─── Interpolation ───
 
@@ -40,6 +40,13 @@ function linterpolate(Vvec::Vector{Float64}, grid::Vector{Float64}, vi::Float64)
         wl = (grid[il+1] - vi) / (grid[il+1] - grid[il])
         return wl * Vvec[il] + (1.0 - wl) * Vvec[il+1]
     end
+end
+
+function interp2(A, i1, w1, i2, w2, it)
+    w1*w2         .* @view(A[i1,   i2,   it, :, :]) .+
+    w1*(1-w2)     .* @view(A[i1,   i2+1, it, :, :]) .+
+    (1-w1)*w2     .* @view(A[i1+1, i2,   it, :, :]) .+
+    (1-w1)*(1-w2) .* @view(A[i1+1, i2+1, it, :, :])
 end
 
 # ─── Grid construction ───
