@@ -19,9 +19,13 @@ struct ModelParams
     zgrid::Vector{Float64}
     Kgrid::Vector{Float64}
     Θgrid::Vector{Float64}
+
     amu::Vector{Float64}
+    kernel::Vector{Float64}
+    
     π_l::Matrix{Float64}
     π_z::Matrix{Float64}
+    π_Θ::Matrix{Float64}
 end
 
 struct ImpliedRegimeParams_KS{N}
@@ -41,7 +45,6 @@ struct ImpliedRegimeParams
     r::Vector{Float64}
     w::Vector{Float64}
 end
-
 
 struct ProposedPolicies
     # migration and progressivity

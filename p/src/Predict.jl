@@ -7,7 +7,8 @@ using Statistics: mean, median
 using ..Solvers: KSsolver
 using ..DistrTools: getDistr, transitDistr
 using ..Compute: weight, supnorm, summarizeDataByTransition, interp2
-using ..ModelFunctions: getExpectationKS, build_votes, mapVotes
+using ..ModelFunctions: getExpectationKS, build_votes, mapVotes, getVotes
+using ..VoteDiagnostics: vote_diff, decompose_at, decompose_path, VoteDiagStats, log_diag
 
 export simz, transition, perfectForesight, genForecastData, update_forecast, run_KS
 
@@ -52,11 +53,35 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies1, policies2,
  
     EV1 = getExpectationKS(futureKs, V1, params, CI, LI)
 
-    # my votes are based on historical TFP transition and vote shares today 
+    # spitting out some data on variance decomposition
+    res = decompose_path(V1, Kgrid, KforeA, KforeB, μ_transit, Kt[1:NT], it_t)
+    log_diag(res; iter = iter_ct)
+    
+    #=
+    Okay, so here's where things get a bit crazy. Basically, the way to compare expected
+    values is a huge mess and the reason for that is because with two different laws of 
+    motion, I can't run both of them because it will lead to either (1) no comparison;
+    or (2) a comparison that is not apples-to-apples. So, instead what I have to do is
+    a conditional expectation. What that requires is getting the kernel density of the 
+    residuals from the previous run to find the law of motion, then using that kernel 
+    density to get the conditional expectation of my expected continuation value given
+    the K projected by the law of motion. 
+
+    This, to me, is chaos. It has caused chaos for me internally. I have spent weeks on a 
+    problem that likely is very obvious to anyone who is reading this code. But, alas, I 
+    have no mouth but I must scream, etc. etc. You'll see here that I am going to use the 
+    kernel distribution that is passed in as a parameter to get the conditional expectation
+    of the continuation value of the function. 
+    =#
+
+    VOTES = getVotes(V0, params)
     VOTES = zeros(nΘ, nk,nt,nl,na); 
-    for iΘ in 1:nΘ, it in 1:nt
-        VOTES[iΘ,:,it,:,:] = Int.(EV1[iΘ,:, it, :, :] .> EV2[iΘ, :, it, :, :]); 
-    end
+    kernel = params.kernel; # this is 101-size grid on [0,1]
+    median = ceil(Int, median(1:length(kernel))); # getting the location of the median, 
+                                                    # if coarser or finer 
+
+    #now apply the expectation to every dimension *but* Theta, assuming a is chosen for next period
+
 
 	# choose a random starting point for the simulation
     NT = length(zt);
@@ -83,6 +108,9 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies1, policies2,
 
     μ_transit = μ_transit[it_t[1], :, :]
 
+    # for voting, I follow theta's law of motion, but compare the different projected K's given theta.
+    # this means that I, given theta and today's K, compare EV[Θ', K_a, :,:,:] to EV[Θ', K_b, :,:,:]
+
 	for t in 1:NT
 		if t%2500 == 0 && verbose
 			@printf("\tSimulating period %i of %i\n", t, NT)
@@ -91,10 +119,10 @@ function genForecastData(V, V0, G, G0, C, Kfore, params, policies1, policies2,
         # getting today's vote to be used for tomorrow. 
 		K = Kt[t]; ix, we = weight(Kgrid, K);
 		it = it_t[t] # getting which z transition we're in
-        Θ = Θ_t[t]; Θix, Θwe = weight(Θgrid, Θ);
+        Θ = Θt[t]; Θix, Θwe = weight(Θgrid, Θ);
         VOTES_today = interp2(VOTES, Θix, Θwe, ix, we);
         _, voteshare = mapVotes(VOTES_today, params, μ_transit)
-        Θ_t[t+1] = voteshare;
+        Θt[t+1] = voteshare;
 
 		# update the distribution for the next period
         G_t = interp2(G1, Θix, Θwe, ix, we);  # (nl, na)

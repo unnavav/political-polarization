@@ -10,9 +10,32 @@ using Distributions: Normal, cdf
 using Printf
 using Statistics: mean, std, median
 
-export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeDataByTransition, interp2
+export weight, linterpolate, gss, getKgrid, getTauchen, dist, logspace, stationary, supnorm, summarizeDataByTransition, interp2, weight_vec
 
 # ─── Interpolation ───
+
+#claude vectorizing
+function weight_vec(grid::Vector{Float64}, fs::AbstractVector{Float64})
+    n = length(grid)
+    m = length(fs)
+    ixs = Vector{Int}(undef, m)
+    wes = Vector{Float64}(undef, m)
+    @inbounds for k in 1:m
+        f = fs[k]
+        if f >= grid[end]
+            ixs[k] = n - 1
+            wes[k] = 0.0
+        elseif f < grid[1]
+            ixs[k] = 1
+            wes[k] = 1.0
+        else
+            ix = searchsortedlast(grid, f)
+            ixs[k] = ix
+            wes[k] = (grid[ix+1] - f) / (grid[ix+1] - grid[ix])
+        end
+    end
+    return ixs, wes
+end
 
 function weight(grid::Vector{Float64}, f::Float64)
     n = length(grid)

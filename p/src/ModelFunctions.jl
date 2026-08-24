@@ -1,7 +1,7 @@
 # ModelFunctions.jl
 module ModelFunctions
 
-using ..Compute: weight
+using ..Compute: weight, weight_vec
 using ..ModelTypes: ModelParams, ImpliedRegimeParams, ProposedPolicies
 using ..DistrTools: getDistr, transitDistr
 using LinearAlgebra: dot
@@ -134,6 +134,70 @@ function mapVotesKS(votes::Array{Int,3}, μ::Array{Float64,3},
     return vdistr, share
 end
 
+function getVotes(V0::Array{Float64,5}, params::ModelParams, futureKs::Matrix{Float64}, CI, LI)
+    nθ, nk, nt, nl, na = size(V0)
+    EV = zeros(Float64, nθ, nk, nt, nl, na);
+
+    # getting transition probabilities etc
+    kernel = params.kernel; 
+    π_Θ = params.π_Θ; #this has many jobs, but for now let's just call it the transition matrix
+    ε_mean = mean(kernel); 
+    if abs(ε_mean) > 1e-8
+        @warn "Kernel mean is not ~0, but $ε_mean. Check the kernel distribution and residuals."
+    end
+
+
+    for iθ in 1:nθ
+        EV[iθ, :, :, :, :] = getExpectationKS(futureKs, V0[iθ, :, :, :, :], params, CI, LI);
+    end
+
+    # here's the problem. Our nθ is coarse, kernel is not. So I'll need to interpolate EV to be
+    # more granular.  But since this is, at its heart, a discrete problem, I can't just do a cubic
+    # spline across all of EV. I've logspaced around 0.5, so what I'll need to do is interpolate the 
+    # Θgrid on the kernel grid, and then use that to get an EV that matches our kernel. 
+
+    # CLAUDE: IF i COPY-PASTE THIS, DOUBLE CHECK THAT THE KERNEL IS STILL LINEARLY SPACED
+    n_knots = (length(kernel)-1)÷2+1;
+    knots = LinRange(0, 1, n_knots)
+
+    ixs, wes = weight_vec(params.Θgrid, collect(knots));
+    EV_k = zeros(n_knots, nk, nt, nl, na);
+    for ik in 1:n_knots
+        ix = ixs[ik]; we = wes[ik];
+        EV_k[ik, :, :, :, :] = we * EV[ix, :, :, :, :] + (1-we)*EV[ix+1, :, :, :, :];
+    end
+
+    # finally computing votes 😭🫠🚬
+    votes = zeros(Int, n_knots, nk, nt, nl, na);
+    ix, we = weight(knots, 0.5); #we should be 1 here; the knot should be already 0.5
+    @assert isapprox(we, 1.0; atol=1e-10) "0.5 is not exactly a knot: n_knots=$n_knots gives we=$we. Need odd n_knots."
+    A_range = ix:n_knots    # Θ' >= 0.5 → Incumbent
+    B_range = 1:ix-1            # Θ' < 0.5 → Challenger
+    PROB_TOL = 1e-10      # just making sure this doesn't return NA or blow up
+
+    for ik in 1:n_knots
+        a_prob = sum(π_Θ[ik, A_range])
+        b_prob = sum(π_Θ[ik, B_range])
+
+        a_reachable = a_prob > PROB_TOL
+        b_reachable = b_prob > PROB_TOL
+
+        for iK in 1:nk, it in 1:nt, il in 1:nl, ia in 1:na
+            if a_reachable && b_reachable
+                W_A = dot(π_Θ[ik, A_range], @view EV_k[A_range, iK, it, il, ia]) / a_prob
+                W_B = dot(π_Θ[ik, B_range], @view EV_k[B_range, iK, it, il, ia]) / b_prob
+                votes[ik, iK, it, il, ia] = W_A > W_B
+            elseif a_reachable
+                votes[ik, iK, it, il, ia] = 1      # only A reachable → vote A
+            else
+                votes[ik, iK, it, il, ia] = 0      # only B reachable (or neither) → vote B
+            end
+        end
+    end
+
+    return votes
+end
+
 function voteSharePath(incumbent, challenger, zt_shock, params)
     Kgrid = params.Kgrid
     amu   = params.amu
@@ -200,6 +264,35 @@ end
 
 function build_votes(EV_c::Array{Float64,4}, EV_i::Array{Float64,4}, it::Int)
     return Int.(EV_c[:, it, :, :] .> EV_i[:, it, :, :])
+end
+
+function build_transition_matrix(kernel, ρ0::Float64, ρ1::Float64)
+
+    n_knots = (length(kernel)-1)÷2+1;
+    knots = LinRange(0, 1, n_knots);
+
+    π_Θ = zeros(n_knots, n_knots);
+    for i in 1:n_knots
+        m = ρ0 + ρ1 * knots[i]              # where I guess I'll be tomorrow given this θ
+        ix, we = weight(knots, m)                    # m sits between knot ix and ix+1
+        
+        # this is insane but let me cook i swear
+
+        # rolling window of length n_knots into the length-(2n_knots-1) kernel.
+        # ix knots below, (n_knots - ix) above, for the lower placement:
+        lo_start = n_knots - ix + 1             # so the window is exactly n_knots long
+        lo = lo_start : lo_start + n_knots - 1
+        hi = min.(lo .+ 1, length(kernel))     # the adjacent placement, shifted by one
+    
+        π_Θ[i, :] = we * kernel[lo] .+ (1-we) * kernel[hi];
+
+        s = sum(π_Θ[i, :])
+        if s > 0
+            π_Θ[i, :] ./= s                      # renormalize after truncation
+        end
+    end
+
+    return π_Θ
 end
 
 # ─── Pricing and Policy Responsiveness ───
